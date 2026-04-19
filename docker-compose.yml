@@ -1,0 +1,42 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: camp_risk_backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    environment:
+      - DEBUG=True
+      - DB_HOST=db
+      - DB_NAME=camp_risk_db
+      - DB_USER=camp_risk_user
+      - DB_PASSWORD=camp_risk_pass
+    depends_on:
+      - db
+    networks:
+      - camp_risk_net
+
+  db:
+    image: mysql:8.0
+    container_name: camp_risk_db
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_DATABASE: camp_risk_db
+      MYSQL_USER: camp_risk_user
+      MYSQL_PASSWORD: camp_risk_pass
+      MYSQL_ROOT_PASSWORD: root_pass
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - camp_risk_net
+
+networks:
+  camp_risk_net:
+    driver: bridge
+
+volumes:
+  mysql_data:
