@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 import { Shield, X, UserPlus, Trash2 } from 'lucide-react';
-import xuLogo from 'figma:asset/ec82392f1b0bc80e2b02dd96773ac4886a651a93.png';
+import { xuLogo } from '../constants/xuLogo';
 
 interface SecurityPersonnel {
   id: string;
@@ -18,11 +18,7 @@ export function ManagePersonnel() {
   const { user, logout } = useAuth();
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState<string | null>(null);
-  const [personnel, setPersonnel] = useState<SecurityPersonnel[]>([
-    { id: '1', username: 'jdelacruz', fullName: 'Juan dela Cruz', email: 'juan.delacruz@xu.edu.ph', dateAdded: '2024-01-15', status: 'Active' },
-    { id: '2', username: 'pgarcia', fullName: 'Pedro Garcia', email: 'pedro.garcia@xu.edu.ph', dateAdded: '2024-02-20', status: 'Active' },
-    { id: '3', username: 'mlopez', fullName: 'Maria Lopez', email: 'maria.lopez@xu.edu.ph', dateAdded: '2024-03-10', status: 'Active' },
-  ]);
+  const [personnel, setPersonnel] = useState<SecurityPersonnel[]>([]);
 
   const [formData, setFormData] = useState({
     username: '',
@@ -119,31 +115,42 @@ export function ManagePersonnel() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {personnel.map((person) => (
-                  <tr key={person.id} className="hover:bg-slate-50">
-                    <td className="px-6 py-4 text-sm text-[var(--xu-blue)]">{person.id}</td>
-                    <td className="px-6 py-4 text-sm text-slate-800">{person.username}</td>
-                    <td className="px-6 py-4 text-sm text-slate-800">{person.fullName}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{person.email}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{person.dateAdded}</td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex px-2 py-1 text-xs rounded-full ${
-                        person.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                      }`}>
-                        {person.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <button
-                        onClick={() => setShowDeleteModal(person.id)}
-                        className="flex items-center gap-1 px-3 py-1 text-sm text-red-600 border border-red-300 rounded-md hover:bg-red-50 transition-colors"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        Delete
-                      </button>
+                {personnel.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-10 text-center text-slate-500 text-sm">
+                      No personnel records yet. Use &quot;Add Personnel&quot; to create entries.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  personnel.map((person) => (
+                    <tr key={person.id} className="hover:bg-slate-50">
+                      <td className="px-6 py-4 text-sm text-[var(--xu-blue)]">{person.id}</td>
+                      <td className="px-6 py-4 text-sm text-slate-800">{person.username}</td>
+                      <td className="px-6 py-4 text-sm text-slate-800">{person.fullName}</td>
+                      <td className="px-6 py-4 text-sm text-slate-600">{person.email}</td>
+                      <td className="px-6 py-4 text-sm text-slate-600">{person.dateAdded}</td>
+                      <td className="px-6 py-4">
+                        <span
+                          className={`inline-flex px-2 py-1 text-xs rounded-full ${
+                            person.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                          }`}
+                        >
+                          {person.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <button
+                          type="button"
+                          onClick={() => setShowDeleteModal(person.id)}
+                          className="flex items-center gap-1 px-3 py-1 text-sm text-red-600 border border-red-300 rounded-md hover:bg-red-50 transition-colors"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>

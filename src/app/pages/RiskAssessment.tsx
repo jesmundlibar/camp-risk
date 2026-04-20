@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { Save, Send, AlertCircle } from 'lucide-react';
-import xuLogo from 'figma:asset/ec82392f1b0bc80e2b02dd96773ac4886a651a93.png';
+import { xuLogo } from '../constants/xuLogo';
+import { fetchReport, type ApiReport } from '../lib/api';
 
 interface MitigationAction {
   description: string;
@@ -11,6 +12,31 @@ interface MitigationAction {
 export function RiskAssessment() {
   const navigate = useNavigate();
   const { reportId } = useParams();
+  const [sourceReport, setSourceReport] = useState<ApiReport | null>(null);
+  const [reportLoading, setReportLoading] = useState(!!reportId);
+
+  useEffect(() => {
+    if (!reportId) {
+      setSourceReport(null);
+      setReportLoading(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setReportLoading(true);
+      try {
+        const r = await fetchReport(reportId);
+        if (!cancelled) setSourceReport(r);
+      } catch {
+        if (!cancelled) setSourceReport(null);
+      } finally {
+        if (!cancelled) setReportLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [reportId]);
 
   const [riskClassification, setRiskClassification] = useState('');
   const [likelihood, setLikelihood] = useState('');
@@ -90,25 +116,51 @@ export function RiskAssessment() {
             {/* Incident Details (Read-Only) */}
             <div className="bg-slate-50 rounded-lg p-4 sm:p-6 lg:p-8 border border-slate-200">
               <h3 className="text-lg lg:text-xl text-slate-800 mb-4">Incident Details</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm sm:text-base">
-                <div>
-                  <span className="text-slate-600">Hazard:</span>
-                  <span className="ml-2 text-slate-800">Loose Electrical Wiring</span>
+              {reportLoading ? (
+                <p className="text-sm text-slate-500">Loading incident…</p>
+              ) : sourceReport ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm sm:text-base">
+                  <div>
+                    <span className="text-slate-600">Hazard:</span>
+                    <span className="ml-2 text-slate-800">{sourceReport.hazard}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-600">Location:</span>
+                    <span className="ml-2 text-slate-800">{sourceReport.location}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-600">Reported:</span>
+                    <span className="ml-2 text-slate-800">
+                      {sourceReport.date} — {sourceReport.guard}
+                    </span>
+                  </div>
+                  <div>
+                    {sourceReport.photo_url ? (
+                      <a
+                        href={sourceReport.photo_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[var(--xu-blue)] hover:underline"
+                      >
+                        View attached image
+                      </a>
+                    ) : (
+                      <span className="text-slate-500">No image attached</span>
+                    )}
+                  </div>
+                  {sourceReport.description ? (
+                    <div className="sm:col-span-2">
+                      <span className="text-slate-600">Description:</span>
+                      <p className="mt-1 text-slate-800">{sourceReport.description}</p>
+                    </div>
+                  ) : null}
                 </div>
-                <div>
-                  <span className="text-slate-600">Location:</span>
-                  <span className="ml-2 text-slate-800">Building A, Floor 2, Room 201</span>
-                </div>
-                <div>
-                  <span className="text-slate-600">Reported:</span>
-                  <span className="ml-2 text-slate-800">April 1, 2024 - Juan dela Cruz</span>
-                </div>
-                <div>
-                  <button type="button" className="text-[var(--xu-blue)] hover:underline">
-                    [View Image]
-                  </button>
-                </div>
-              </div>
+              ) : (
+                <p className="text-sm text-slate-600">
+                  No incident loaded for this ID. Use &quot;Assess&quot; from a pending report in the admin queue, or
+                  check that the API is running.
+                </p>
+              )}
             </div>
 
             {/* Risk Classification */}

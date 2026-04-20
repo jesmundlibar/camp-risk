@@ -1,42 +1,80 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../context/AuthContext';
-import { AlertCircle, CheckCircle, Clock, Shield, X, Users } from 'lucide-react';
-import xuLogo from 'figma:asset/ec82392f1b0bc80e2b02dd96773ac4886a651a93.png';
+import { AlertCircle, Clock, X, Users } from 'lucide-react';
+import { xuLogo } from '../constants/xuLogo';
+import { fetchReports } from '../lib/api';
 
-const pendingReports = [
-  { id: 'RISK-0421', hazard: 'Loose Electrical Wiring', date: '2024-04-01', priority: 'High', location: 'Building A, Floor 2', guard: 'Juan dela Cruz', status: 'pending' },
-  { id: 'RISK-0420', hazard: 'Wet Floor - Corridor B', date: '2024-04-01', priority: 'Medium', location: 'Building C, Floor 1', guard: 'Pedro Garcia', status: 'pending' },
-  { id: 'RISK-0419', hazard: 'Broken Fire Exit Light', date: '2024-03-31', priority: 'High', location: 'Building B, Floor 3', guard: 'Juan dela Cruz', status: 'pending' },
-  { id: 'RISK-0418', hazard: 'Damaged Railing', date: '2024-03-31', priority: 'Medium', location: 'Stairwell D', guard: 'Maria Lopez', status: 'pending' },
-  { id: 'RISK-0417', hazard: 'Chemical Spill', date: '2024-03-30', priority: 'High', location: 'Laboratory 5', guard: 'Pedro Garcia', status: 'pending' },
-];
+type PendingReportRow = {
+  id: string;
+  hazard: string;
+  date: string;
+  priority: string;
+  location: string;
+  guard: string;
+  status: string;
+};
 
-const openRisks = [
-  { id: 'ASS-0089', hazard: 'Electrical System Vulnerability', severity: 'High', status: 'Open', score: 12, location: 'Building A', dateAssessed: '2024-04-01' },
-  { id: 'ASS-0088', hazard: 'Slip Hazard - Main Corridor', severity: 'Medium', status: 'In Review', score: 8, location: 'Building C', dateAssessed: '2024-03-28' },
-  { id: 'ASS-0086', hazard: 'Fire Safety Equipment', severity: 'High', status: 'Open', score: 12, location: 'Building B', dateAssessed: '2024-03-27' },
-  { id: 'ASS-0084', hazard: 'Structural Integrity Issue', severity: 'Medium', status: 'Open', score: 9, location: 'Stairwell D', dateAssessed: '2024-03-25' },
-];
+type OpenRiskRow = {
+  id: string;
+  hazard: string;
+  severity: string;
+  status: string;
+  score: number;
+  location: string;
+  dateAssessed: string;
+};
 
-const overdueActions = [
-  { id: 'MIT-085', task: 'Replace fire exit signage', dueDate: '2024-03-30', daysOverdue: 6, assignedTo: 'Safety Team', relatedRisk: 'ASS-0086' },
-  { id: 'MIT-083', task: 'Repair damaged railing', dueDate: '2024-03-28', daysOverdue: 8, assignedTo: 'Maintenance', relatedRisk: 'ASS-0084' },
-  { id: 'MIT-081', task: 'Install non-slip floor coating', dueDate: '2024-03-25', daysOverdue: 11, assignedTo: 'Facilities', relatedRisk: 'ASS-0088' },
-];
+type OverdueActionRow = {
+  id: string;
+  task: string;
+  dueDate: string;
+  daysOverdue: number;
+  assignedTo: string;
+  relatedRisk: string;
+};
 
-const riskRegister = [
-  { id: 'ASS-0089', severity: 'High', status: 'Open' },
-  { id: 'ASS-0088', severity: 'Medium', status: 'In Review' },
-  { id: 'ASS-0087', severity: 'High', status: 'Mitigated' },
-  { id: 'ASS-0086', severity: 'Low', status: 'Open' },
-  { id: 'ASS-0085', severity: 'Medium', status: 'Mitigated' },
-];
+type RiskRegisterRow = { id: string; severity: string; status: string };
 
 export function AdminDashboard() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const [showModal, setShowModal] = useState<'pending' | 'risks' | 'overdue' | null>(null);
+  const [pendingReports, setPendingReports] = useState<PendingReportRow[]>([]);
+  const [reportsLoading, setReportsLoading] = useState(true);
+  const [openRisks] = useState<OpenRiskRow[]>([]);
+  const [overdueActions] = useState<OverdueActionRow[]>([]);
+  const [riskRegister] = useState<RiskRegisterRow[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setReportsLoading(true);
+      try {
+        const data = await fetchReports({ status: 'pending' });
+        if (!cancelled) {
+          setPendingReports(
+            data.map((r) => ({
+              id: r.id,
+              hazard: r.hazard,
+              date: r.date,
+              priority: r.priority,
+              location: r.location,
+              guard: r.guard,
+              status: r.status_code,
+            })),
+          );
+        }
+      } catch {
+        if (!cancelled) setPendingReports([]);
+      } finally {
+        if (!cancelled) setReportsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleLogout = () => {
     logout();
@@ -136,34 +174,49 @@ export function AdminDashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {pendingReports.map((report) => (
-                  <tr key={report.id} className="hover:bg-slate-50">
-                    <td className="px-6 py-4 text-sm text-[var(--xu-blue)]">{report.id}</td>
-                    <td className="px-6 py-4 text-sm text-slate-800">{report.hazard}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{report.date}</td>
-                    <td className="px-6 py-4">
-                      <span
-                        className={`inline-flex px-2 py-1 text-xs rounded-full ${
-                          report.priority === 'High'
-                            ? 'bg-red-100 text-red-800'
-                            : report.priority === 'Medium'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-green-100 text-green-800'
-                        }`}
-                      >
-                        {report.priority}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <button
-                        onClick={() => navigate(`/admin/assess/${report.id}`)}
-                        className="px-4 py-2 bg-[var(--xu-blue)] text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
-                      >
-                        Assess
-                      </button>
+                {reportsLoading ? (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-8 text-center text-slate-500 text-sm">
+                      Loading reports…
                     </td>
                   </tr>
-                ))}
+                ) : pendingReports.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-8 text-center text-slate-500 text-sm">
+                      No incident reports in the queue. Guards can submit new reports from their dashboard.
+                    </td>
+                  </tr>
+                ) : (
+                  pendingReports.map((report) => (
+                    <tr key={report.id} className="hover:bg-slate-50">
+                      <td className="px-6 py-4 text-sm text-[var(--xu-blue)]">{report.id}</td>
+                      <td className="px-6 py-4 text-sm text-slate-800">{report.hazard}</td>
+                      <td className="px-6 py-4 text-sm text-slate-600">{report.date}</td>
+                      <td className="px-6 py-4">
+                        <span
+                          className={`inline-flex px-2 py-1 text-xs rounded-full ${
+                            report.priority === 'High'
+                              ? 'bg-red-100 text-red-800'
+                              : report.priority === 'Medium'
+                                ? 'bg-yellow-100 text-yellow-800'
+                                : 'bg-green-100 text-green-800'
+                          }`}
+                        >
+                          {report.priority}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/admin/assess/${report.id}`)}
+                          className="px-4 py-2 bg-[var(--xu-blue)] text-white text-sm rounded-md hover:bg-blue-700 transition-colors"
+                        >
+                          Assess
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -186,25 +239,33 @@ export function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {riskRegister.map((risk) => (
-                    <tr key={risk.id} className="hover:bg-slate-50">
-                      <td className="px-6 py-4 text-sm text-[var(--xu-blue)]">{risk.id}</td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={`inline-flex px-2 py-1 text-xs rounded-full ${
-                            risk.severity === 'High'
-                              ? 'bg-red-100 text-red-800'
-                              : risk.severity === 'Medium'
-                              ? 'bg-yellow-100 text-yellow-800'
-                              : 'bg-green-100 text-green-800'
-                          }`}
-                        >
-                          {risk.severity}
-                        </span>
+                  {riskRegister.length === 0 ? (
+                    <tr>
+                      <td colSpan={3} className="px-6 py-8 text-center text-slate-500 text-sm">
+                        No risks in the register yet.
                       </td>
-                      <td className="px-6 py-4 text-sm text-slate-600">{risk.status}</td>
                     </tr>
-                  ))}
+                  ) : (
+                    riskRegister.map((risk) => (
+                      <tr key={risk.id} className="hover:bg-slate-50">
+                        <td className="px-6 py-4 text-sm text-[var(--xu-blue)]">{risk.id}</td>
+                        <td className="px-6 py-4">
+                          <span
+                            className={`inline-flex px-2 py-1 text-xs rounded-full ${
+                              risk.severity === 'High'
+                                ? 'bg-red-100 text-red-800'
+                                : risk.severity === 'Medium'
+                                  ? 'bg-yellow-100 text-yellow-800'
+                                  : 'bg-green-100 text-green-800'
+                            }`}
+                          >
+                            {risk.severity}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-slate-600">{risk.status}</td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -214,36 +275,36 @@ export function AdminDashboard() {
           <div className="bg-white rounded-lg shadow-lg p-6">
             <div className="border-b border-slate-200 pb-4 mb-6">
               <h3 className="text-xl text-slate-800">Mitigation Tracking</h3>
-              <p className="text-sm text-slate-600 mt-1">Jan-Jun 2024</p>
+              <p className="text-sm text-slate-600 mt-1">Summary (no records yet)</p>
             </div>
             <div className="space-y-6">
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm text-slate-700">Completed Actions</span>
-                  <span className="text-sm text-green-600">75%</span>
+                  <span className="text-sm text-green-600">0%</span>
                 </div>
                 <div className="w-full bg-slate-200 rounded-full h-3">
-                  <div className="bg-green-500 h-3 rounded-full" style={{ width: '75%' }}></div>
+                  <div className="bg-green-500 h-3 rounded-full" style={{ width: '0%' }}></div>
                 </div>
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm text-slate-700">In Progress</span>
-                  <span className="text-sm text-yellow-600">50%</span>
+                  <span className="text-sm text-yellow-600">0%</span>
                 </div>
                 <div className="w-full bg-slate-200 rounded-full h-3">
-                  <div className="bg-yellow-500 h-3 rounded-full" style={{ width: '50%' }}></div>
+                  <div className="bg-yellow-500 h-3 rounded-full" style={{ width: '0%' }}></div>
                 </div>
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm text-slate-700">Overdue</span>
-                  <span className="text-sm text-red-600">25%</span>
+                  <span className="text-sm text-red-600">0%</span>
                 </div>
                 <div className="w-full bg-slate-200 rounded-full h-3">
-                  <div className="bg-red-500 h-3 rounded-full" style={{ width: '25%' }}></div>
+                  <div className="bg-red-500 h-3 rounded-full" style={{ width: '0%' }}></div>
                 </div>
               </div>
             </div>
@@ -271,7 +332,10 @@ export function AdminDashboard() {
             </div>
             <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
               <div className="space-y-4">
-                {pendingReports.map((report) => (
+                {pendingReports.length === 0 ? (
+                  <p className="text-center text-slate-500 py-8 text-sm">No pending reports.</p>
+                ) : (
+                  pendingReports.map((report) => (
                   <div
                     key={report.id}
                     className="border border-slate-200 rounded-lg p-4 hover:bg-slate-50 transition-colors"
@@ -324,7 +388,8 @@ export function AdminDashboard() {
                       </button>
                     </div>
                   </div>
-                ))}
+                  ))
+                )}
               </div>
             </div>
           </div>
@@ -351,7 +416,10 @@ export function AdminDashboard() {
             </div>
             <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
               <div className="space-y-4">
-                {openRisks.map((risk) => (
+                {openRisks.length === 0 ? (
+                  <p className="text-center text-slate-500 py-8 text-sm">No open risks on file.</p>
+                ) : (
+                  openRisks.map((risk) => (
                   <div
                     key={risk.id}
                     className="border border-slate-200 rounded-lg p-4 hover:bg-slate-50 transition-colors"
@@ -404,7 +472,8 @@ export function AdminDashboard() {
                       </button>
                     </div>
                   </div>
-                ))}
+                  ))
+                )}
               </div>
             </div>
           </div>
@@ -431,7 +500,10 @@ export function AdminDashboard() {
             </div>
             <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
               <div className="space-y-4">
-                {overdueActions.map((action) => (
+                {overdueActions.length === 0 ? (
+                  <p className="text-center text-slate-500 py-8 text-sm">No overdue actions.</p>
+                ) : (
+                  overdueActions.map((action) => (
                   <div
                     key={action.id}
                     className="border-l-4 border-red-500 bg-red-50 rounded-lg p-4"
@@ -484,7 +556,8 @@ export function AdminDashboard() {
                       </button>
                     </div>
                   </div>
-                ))}
+                  ))
+                )}
               </div>
             </div>
           </div>

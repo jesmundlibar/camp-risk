@@ -41,8 +41,27 @@ const PERMISSIONS = {
   ],
 };
 
+function readStoredUser(): User | null {
+  try {
+    const raw = sessionStorage.getItem('user');
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<User>;
+    if (parsed?.id && parsed?.role && (parsed.role === 'guard' || parsed.role === 'admin')) {
+      return {
+        id: parsed.id,
+        username: typeof parsed.username === 'string' ? parsed.username : 'user',
+        role: parsed.role,
+        fullName: typeof parsed.fullName === 'string' ? parsed.fullName : '',
+      };
+    }
+  } catch {
+    /* ignore corrupt storage */
+  }
+  return null;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(() => readStoredUser());
 
   const login = async (username: string, password: string, role: UserRole) => {
     // Frontend prototype - simulate authentication

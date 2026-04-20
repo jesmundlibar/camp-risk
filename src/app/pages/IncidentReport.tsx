@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { X, Upload } from 'lucide-react';
-import xuLogo from 'figma:asset/ec82392f1b0bc80e2b02dd96773ac4886a651a93.png';
+import { xuLogo } from '../constants/xuLogo';
+import { useAuth } from '../context/AuthContext';
+import { submitIncidentReport } from '../lib/api';
 
 export function IncidentReport() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [hazardTypes, setHazardTypes] = useState<string[]>([]);
   const [otherHazard, setOtherHazard] = useState('');
   const [building, setBuilding] = useState('');
@@ -13,6 +16,8 @@ export function IncidentReport() {
   const [specific, setSpecific] = useState('');
   const [description, setDescription] = useState('');
   const [photo, setPhoto] = useState<File | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
 
   const hazardOptions = [
     'Slip/Trip Hazard',
@@ -39,15 +44,43 @@ export function IncidentReport() {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    alert('Report submitted successfully!');
-    navigate('/guard/dashboard');
+    setError('');
+    if (!user) {
+      setError('You must be logged in to submit a report.');
+      return;
+    }
+    if (hazardTypes.length === 0) {
+      setError('Select at least one hazard type.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const fd = new FormData();
+      fd.append('submitted_by_user_id', user.id);
+      fd.append('submitted_by_name', user.fullName);
+      fd.append('hazard_types', JSON.stringify(hazardTypes));
+      fd.append('other_hazard', otherHazard);
+      fd.append('building', building);
+      fd.append('floor', floor);
+      fd.append('room', room);
+      fd.append('specific_location', specific);
+      fd.append('description', description);
+      if (photo) {
+        fd.append('photo', photo);
+      }
+      await submitIncidentReport(fd);
+      navigate('/guard/dashboard');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Submission failed');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Header */}
       <header className="bg-white shadow-sm border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -58,6 +91,7 @@ export function IncidentReport() {
             </div>
           </div>
           <button
+            type="button"
             onClick={() => navigate('/guard/dashboard')}
             className="px-4 py-2 text-sm border border-slate-300 rounded-md hover:bg-slate-100 transition-colors"
           >
@@ -71,6 +105,7 @@ export function IncidentReport() {
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl text-slate-800">New Incident Report</h2>
             <button
+              type="button"
               onClick={() => navigate('/guard/dashboard')}
               className="text-slate-600 hover:text-slate-800"
             >
@@ -78,8 +113,11 @@ export function IncidentReport() {
             </button>
           </div>
 
+          {error && (
+            <div className="mb-6 p-3 rounded-md bg-red-50 border border-red-200 text-sm text-red-800">{error}</div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-8">
-            {/* Hazard Type */}
             <div>
               <label className="block text-slate-800 mb-3">
                 Hazard Type
@@ -112,7 +150,6 @@ export function IncidentReport() {
               )}
             </div>
 
-            {/* Photo Upload */}
             <div>
               <label className="block text-slate-800 mb-3">Photo Upload</label>
               <div className="border-2 border-dashed border-slate-300 rounded-lg p-8 text-center hover:border-[var(--xu-blue)] transition-colors">
@@ -128,15 +165,12 @@ export function IncidentReport() {
                   <p className="text-slate-700 mb-1">Click to Upload Image</p>
                   <p className="text-sm text-slate-500">(JPG/PNG, Max 5MB)</p>
                   {photo && (
-                    <p className="text-sm text-[var(--xu-blue)] mt-2">
-                      Selected: {photo.name}
-                    </p>
+                    <p className="text-sm text-[var(--xu-blue)] mt-2">Selected: {photo.name}</p>
                   )}
                 </label>
               </div>
             </div>
 
-            {/* Location Details */}
             <div>
               <label className="block text-slate-800 mb-3">Location Details</label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -182,7 +216,6 @@ export function IncidentReport() {
               </div>
             </div>
 
-            {/* Description */}
             <div>
               <label className="block text-slate-800 mb-3">
                 Description
@@ -194,16 +227,16 @@ export function IncidentReport() {
                 rows={4}
                 placeholder="Additional details about the incident..."
                 className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--xu-blue)] bg-white resize-none"
-              ></textarea>
+              />
             </div>
 
-            {/* Submit Button */}
             <div className="flex justify-end pt-4">
               <button
                 type="submit"
-                className="w-full sm:w-auto px-8 py-3 bg-[var(--xu-blue)] text-white rounded-md hover:bg-blue-700 transition-colors"
+                disabled={submitting}
+                className="w-full sm:w-auto px-8 py-3 bg-[var(--xu-blue)] text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                Submit Report
+                {submitting ? 'Submitting…' : 'Submit Report'}
               </button>
             </div>
           </form>

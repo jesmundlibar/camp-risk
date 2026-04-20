@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth, UserRole } from '../context/AuthContext';
 import { Shield, AlertCircle } from 'lucide-react';
-import xuLogo from 'figma:asset/ec82392f1b0bc80e2b02dd96773ac4886a651a93.png';
+import { xuLogo } from '../constants/xuLogo';
 
 export function Login() {
   const navigate = useNavigate();
