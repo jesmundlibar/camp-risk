@@ -1,3 +1,4 @@
+# Pip only — machine/setup guide for the team: ../requirements.txt (repo root)
 Django>=4.2,<5
 django-cors-headers>=4.3,<5
 Pillow>=10.0,<12

@@ -1,0 +1,129 @@
+================================================================================
+  CAMP-RISK — WHAT TO INSTALL ON EACH LAPTOP (GROUP SETUP)
+================================================================================
+
+This file lists software and steps so everyone can run the project.
+
+Python packages for the API are listed separately in:
+  backend/requirements.txt
+Install those only with pip from the backend folder (see section 3).
+
+--------------------------------------------------------------------------------
+1. INSTALL ON EVERY MACHINE (BASELINE)
+--------------------------------------------------------------------------------
+
+  Git
+    - Clone and update the repository.
+
+  Python 3.10 or newer
+    - Required for the Django backend.
+    - Recommended: Python 3.11 (matches backend/Dockerfile).
+
+  Node.js 18 or newer (includes npm)
+    - Required for frontend tooling at the repo root.
+    - The lockfile expects Node >= 18.
+
+--------------------------------------------------------------------------------
+2. OPTIONAL — ONLY IF YOUR TEAM USES THAT PATH
+--------------------------------------------------------------------------------
+
+  Docker Desktop (Windows / Mac) or Docker Engine + Compose (Linux)
+    - Use when running the full stack with: docker compose up
+    - Brings MySQL 8 and the backend container; no local MySQL install needed.
+
+  MySQL Server (+ MySQL Workbench if you like a GUI)
+    - Only if Django connects to MySQL on the host (not SQLite, not Docker DB).
+    - Create a database and user; set DB_HOST, DB_PORT, DB_NAME, DB_USER,
+      DB_PASSWORD (see backend/camp_risk/settings.py).
+
+  mysqlclient (Python) when using MySQL from the host
+    - Not listed in backend/requirements.txt; install after system MySQL dev
+      libraries if needed, or follow your OS guide. The backend Dockerfile
+      installs mysqlclient for the container image.
+
+--------------------------------------------------------------------------------
+3. BACKEND (DJANGO API)
+--------------------------------------------------------------------------------
+
+  Folder: backend
+
+  Steps:
+    1. Open a terminal and: cd backend
+    2. Create a virtual environment (recommended):
+         python -m venv .venv
+    3. Activate it:
+         Windows PowerShell:  .\.venv\Scripts\Activate.ps1
+         Windows CMD:         .venv\Scripts\activate.bat
+         macOS / Linux:       source .venv/bin/activate
+    4. Install Python dependencies:
+         pip install -r requirements.txt
+       (This requirements.txt is inside backend/ — it is the pip list.)
+
+  First-time database setup:
+    python manage.py migrate
+
+  Run the API server (default for local dev with the Vite proxy):
+    python manage.py runserver 127.0.0.1:8000
+
+  Database choice:
+    - Do NOT set DB_HOST  →  SQLite file: backend/db.sqlite3 (nothing extra).
+    - Set DB_HOST (and related vars)  →  MySQL (see section 2).
+
+--------------------------------------------------------------------------------
+4. FRONTEND — READ CAREFULLY (REPO HAS MORE THAN ONE PATH)
+--------------------------------------------------------------------------------
+
+  A) Repo root — what package.json declares today
+    Folder: repository root (same level as this requirements.txt)
+
+    Steps:
+      npm install
+      npm run dev
+
+    Effect:
+      - Builds CSS with Tailwind CLI into public/styles/
+      - Serves the public/ folder with "serve" on port 5173
+
+    Declared tooling (from package.json):
+      - tailwindcss, @tailwindcss/cli, serve, tw-animate-css
+
+  B) React + TypeScript under src/ (index.html, vite.config.ts)
+    - Intended stack: Vite + React + plugins referenced in vite.config.ts.
+    - The root package.json does not currently list Vite or React; the group
+      should agree on one documented command (e.g. add scripts and deps) so
+      every laptop runs the same dev server for src/.
+
+  C) frontend/ folder (Create React App)
+    Steps:
+      cd frontend
+      npm install
+      npm start
+
+    - Separate app from the root public/ static site; different port.
+
+  Recommendation:
+    Pick one UI path for demos and document the exact npm commands for the group.
+
+--------------------------------------------------------------------------------
+5. OPTIONAL — DOCKER COMPOSE (BACKEND + MYSQL)
+--------------------------------------------------------------------------------
+
+  From the repository root (where docker-compose.yml is):
+
+    docker compose up
+
+  Requires Docker. Uses MySQL 8 and the backend service on port 8000 per compose file.
+
+--------------------------------------------------------------------------------
+6. QUICK CHECKLIST PER TEAM MEMBER
+--------------------------------------------------------------------------------
+
+  [ ] Git, Python 3.10+, Node.js 18+
+  [ ] cd backend → venv → pip install -r requirements.txt → migrate → runserver :8000
+  [ ] Repo root → npm install → npm run dev (serves public/ on :5173) OR agreed alt
+  [ ] If MySQL on host: server running, database/user created, env vars set, mysqlclient
+  [ ] If Docker path: Docker Desktop → docker compose up
+
+================================================================================
+  END
+================================================================================
