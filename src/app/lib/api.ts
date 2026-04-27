@@ -322,12 +322,17 @@ export async function extendMitigationDeadline(
     notifyTeam: boolean;
   },
 ): Promise<{ ok: boolean; action_ref: string; new_due_date: string; message: string }> {
-  const path = `/api/mitigation/actions/${encodeURIComponent(actionRef.trim())}/extend-deadline/`;
+  const parsed = parseMitigationActionRef(actionRef);
+  if (!parsed) {
+    throw new Error('Invalid action ID. Expected format like RPT-12-A1.');
+  }
+  const path = `/api/reports/${encodeURIComponent(parsed.reportId)}/extend-deadline/`;
   const res = await fetch(apiUrl(path), {
     ...fetchDefaults,
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
+      action_index: parsed.index1,
       new_due_date: payload.newDueDate,
       extension_reason: payload.extensionReason,
       justification: payload.justification,
@@ -351,9 +356,9 @@ export async function updateMitigationTracking(
     notes: string;
   },
 ): Promise<{ ok: boolean; report_id: string; message: string; status_code: string }> {
-  const res = await fetch(apiUrl(`/api/mitigation/reports/${encodeURIComponent(reportId)}/tracking/`), {
+  const res = await fetch(apiUrl(`/api/reports/${encodeURIComponent(reportId)}/mitigation/`), {
     ...fetchDefaults,
-    method: 'POST',
+    method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       mitigation_plan: payload.mitigationPlan,
