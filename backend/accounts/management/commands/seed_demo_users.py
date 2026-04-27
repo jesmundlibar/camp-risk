@@ -5,7 +5,7 @@ from accounts.models import UserProfile
 
 
 class Command(BaseCommand):
-    help = 'Create demo guard and admin users for local development (idempotent).'
+    help = 'Create fixed Admin account and one sample guard (idempotent).'
 
     def handle(self, *args, **options):
         guard, created_g = User.objects.get_or_create(
@@ -22,11 +22,12 @@ class Command(BaseCommand):
         guard.save()
         profile_g, _ = UserProfile.objects.get_or_create(user=guard, defaults={'role': UserProfile.Role.GUARD})
         profile_g.role = UserProfile.Role.GUARD
+        profile_g.created_by_admin = True
         profile_g.save()
         self.stdout.write(self.style.SUCCESS(f"Guard: username=guard password=guard123 ({'created' if created_g else 'updated'})"))
 
         admin_u, created_a = User.objects.get_or_create(
-            username='admin',
+            username='Admin',
             defaults={
                 'first_name': 'Sir',
                 'last_name': 'Apollo',
@@ -34,10 +35,15 @@ class Command(BaseCommand):
                 'is_staff': True,
             },
         )
-        admin_u.set_password('admin123')
+        admin_u.set_password('Admin@123')
         admin_u.is_staff = True
         admin_u.save()
-        profile_a, _ = UserProfile.objects.get_or_create(user=admin_u, defaults={'role': UserProfile.Role.ADMIN})
+        profile_a, _ = UserProfile.objects.get_or_create(
+            user=admin_u, defaults={'role': UserProfile.Role.ADMIN, 'created_by_admin': True}
+        )
         profile_a.role = UserProfile.Role.ADMIN
+        profile_a.created_by_admin = True
         profile_a.save()
-        self.stdout.write(self.style.SUCCESS(f"Admin: username=admin password=admin123 ({'created' if created_a else 'updated'})"))
+        self.stdout.write(
+            self.style.SUCCESS(f"Admin: username=Admin password=Admin@123 ({'created' if created_a else 'updated'})")
+        )

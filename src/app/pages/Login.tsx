@@ -104,10 +104,6 @@ export function Login() {
                 <option value="guard">Security Guard</option>
                 <option value="admin">SSIO Officer / Administrator</option>
               </select>
-              <p className="text-xs text-slate-500 mt-2">
-                Must match how your account is set up (demo: <strong>guard</strong> for security, <strong>admin</strong> for
-                SSIO).
-              </p>
             </div>
 
             <button
@@ -122,12 +118,6 @@ export function Login() {
           <div className="mt-8 pt-6 border-t border-slate-200">
             <div className="text-center text-sm text-slate-500 mb-4">
               © 2026 Xavier University SSIO
-            </div>
-            <div className="text-xs text-slate-400 space-y-1">
-              <p>
-                Demo — Security: <strong>guard</strong> / guard123 · SSIO: <strong>admin</strong> / admin123 (run{' '}
-                <code className="text-[11px]">python manage.py seed_demo_users</code> in <code className="text-[11px]">backend/</code>)
-              </p>
             </div>
           </div>
         </div>
