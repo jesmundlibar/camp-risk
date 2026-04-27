@@ -1,4 +1,6 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
+
+import { apiLogin, apiLogout, apiMe, type ApiUser } from '../lib/api';
 
 export type UserRole = 'guard' | 'admin';
 
@@ -11,20 +13,17 @@ export interface User {
 
 interface AuthContextType {
   user: User | null;
-  login: (username: string, password: string, role: UserRole) => Promise<void>;
-  logout: () => void;
+  login: (username: string, password: string, role: UserRole) => Promise<User>;
+  logout: () => Promise<void>;
   isAuthenticated: boolean;
   hasPermission: (permission: string) => boolean;
+  authReady: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Role-based permissions mapping
-const PERMISSIONS = {
-  guard: [
-    'submit_report',
-    'view_own_reports',
-  ],
+const PERMISSIONS: Record<UserRole, string[]> = {
+  guard: ['submit_report', 'view_own_reports'],
   admin: [
     'submit_report',
     'view_own_reports',
@@ -41,49 +40,44 @@ const PERMISSIONS = {
   ],
 };
 
-function readStoredUser(): User | null {
-  try {
-    const raw = sessionStorage.getItem('user');
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<User>;
-    if (parsed?.id && parsed?.role && (parsed.role === 'guard' || parsed.role === 'admin')) {
-      return {
-        id: parsed.id,
-        username: typeof parsed.username === 'string' ? parsed.username : 'user',
-        role: parsed.role,
-        fullName: typeof parsed.fullName === 'string' ? parsed.fullName : '',
-      };
-    }
-  } catch {
-    /* ignore corrupt storage */
-  }
-  return null;
+function toUser(u: ApiUser): User {
+  return {
+    id: u.id,
+    username: u.username,
+    role: u.role,
+    fullName: u.fullName,
+  };
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(() => readStoredUser());
+  const [user, setUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+
+  const refreshMe = useCallback(async () => {
+    try {
+      const me = await apiMe();
+      setUser(me ? toUser(me) : null);
+    } catch {
+      setUser(null);
+    } finally {
+      setAuthReady(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshMe();
+  }, [refreshMe]);
 
   const login = async (username: string, password: string, role: UserRole) => {
-    // Frontend prototype - simulate authentication
-    // In production: validate credentials with backend JWT authentication
-
-    const userProfiles = {
-      guard: { id: '1', username, role: 'guard' as UserRole, fullName: 'Juan dela Cruz' },
-      admin: { id: '3', username, role: 'admin' as UserRole, fullName: 'Sir Apollo' },
-    };
-
-    // Simulate authentication delay
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    setUser(userProfiles[role]);
-
-    // In production: Store JWT token in HTTP-only cookie
-    sessionStorage.setItem('user', JSON.stringify(userProfiles[role]));
+    const u = await apiLogin(username, password, role);
+    const mapped = toUser(u);
+    setUser(mapped);
+    return mapped;
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await apiLogout();
     setUser(null);
-    sessionStorage.removeItem('user');
   };
 
   const hasPermission = (permission: string): boolean => {
@@ -94,7 +88,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAuthenticated = user !== null;
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, isAuthenticated, hasPermission }}>
+    <AuthContext.Provider
+      value={{ user, login, logout, isAuthenticated, hasPermission, authReady }}
+    >
       {children}
     </AuthContext.Provider>
   );

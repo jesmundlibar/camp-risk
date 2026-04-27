@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 import { ArrowLeft, Send } from 'lucide-react';
 import { xuLogo } from '../constants/xuLogo';
-import { fetchReport, type ApiReport } from '../lib/api';
+import { fetchReport, submitInformationRequest, type ApiReport } from '../lib/api';
 
 export function RequestMoreInfo() {
   const navigate = useNavigate();
@@ -21,6 +21,9 @@ export function RequestMoreInfo() {
     otherInfo: '',
     urgency: 'normal',
   });
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const [submitSuccess, setSubmitSuccess] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -50,11 +53,32 @@ export function RequestMoreInfo() {
     navigate('/');
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const who = apiReport?.guard ?? 'the reporting guard';
-    alert(`Information request recorded (demo). Would notify: ${who}`);
-    navigate('/admin/dashboard');
+    setSubmitError('');
+    setSubmitSuccess('');
+    if (!reportId) {
+      setSubmitError('Missing report ID.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await submitInformationRequest(reportId, {
+        requestType: formData.requestType,
+        specificQuestions: formData.specificQuestions.trim(),
+        additionalPhotos: formData.additionalPhotos,
+        measurements: formData.measurements,
+        witnessStatements: formData.witnessStatements,
+        otherInfo: formData.otherInfo.trim(),
+        urgency: formData.urgency,
+      });
+      setSubmitSuccess(res.message);
+      window.setTimeout(() => navigate('/admin/dashboard'), 2200);
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Could not save request');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const report = apiReport;
@@ -149,6 +173,15 @@ export function RequestMoreInfo() {
             </div>
 
             <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-lg p-6 space-y-6">
+              {submitError ? (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-800">{submitError}</div>
+              ) : null}
+              {submitSuccess ? (
+                <div className="p-3 bg-green-50 border border-green-200 rounded-md text-sm text-green-900">
+                  {submitSuccess}
+                  <p className="mt-2 text-green-800">Redirecting to the dashboard…</p>
+                </div>
+              ) : null}
               <div>
                 <label className="block text-sm text-slate-700 mb-2">Request Type</label>
                 <select
@@ -243,10 +276,11 @@ export function RequestMoreInfo() {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-6 py-3 bg-[var(--xu-blue)] text-white rounded-md hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                  disabled={submitting || !!submitSuccess}
+                  className="flex-1 px-6 py-3 bg-[var(--xu-blue)] text-white rounded-md hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
                 >
                   <Send className="h-5 w-5" />
-                  Send Request
+                  {submitting ? 'Saving…' : submitSuccess ? 'Saved' : 'Send request'}
                 </button>
               </div>
             </form>

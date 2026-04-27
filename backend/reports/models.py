@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 
 
@@ -48,3 +49,80 @@ class IncidentReport(models.Model):
         if self.specific_location:
             parts.append(self.specific_location)
         return ', '.join(p for p in parts if p)
+
+
+class RiskAssessment(models.Model):
+    """HIRAC-style assessment linked one-to-one with an incident report."""
+
+    report = models.OneToOneField(
+        IncidentReport,
+        on_delete=models.CASCADE,
+        related_name='risk_assessment',
+    )
+    risk_classification = models.CharField(max_length=128, blank=True)
+    likelihood = models.PositiveSmallIntegerField()
+    severity = models.PositiveSmallIntegerField()
+    risk_score = models.PositiveSmallIntegerField()
+    risk_level = models.CharField(max_length=64)
+    engineering_controls = models.TextField(blank=True)
+    administrative_controls = models.TextField(blank=True)
+    ppe_controls = models.TextField(blank=True)
+    residual_risk = models.TextField(blank=True)
+    mitigation_actions = models.JSONField(default=list)
+    assessed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='risk_assessments_done',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+
+
+class InformationRequest(models.Model):
+    """Admin request for clarification or extra details from the reporting guard."""
+
+    report = models.ForeignKey(
+        IncidentReport,
+        on_delete=models.CASCADE,
+        related_name='information_requests',
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='information_requests_sent',
+    )
+    payload = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+
+class ReportStatusHistory(models.Model):
+    """Audit trail of report status transitions."""
+
+    report = models.ForeignKey(
+        IncidentReport,
+        on_delete=models.CASCADE,
+        related_name='status_history',
+    )
+    from_status = models.CharField(max_length=32, blank=True)
+    to_status = models.CharField(max_length=32)
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    note = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']

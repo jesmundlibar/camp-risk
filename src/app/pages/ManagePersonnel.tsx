@@ -1,24 +1,20 @@
-import { useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../context/AuthContext';
-import { Shield, X, UserPlus, Trash2 } from 'lucide-react';
+import { X, UserPlus, Trash2 } from 'lucide-react';
 import { xuLogo } from '../constants/xuLogo';
-
-interface SecurityPersonnel {
-  id: string;
-  username: string;
-  fullName: string;
-  email: string;
-  dateAdded: string;
-  status: 'Active' | 'Inactive';
-}
+import { createPersonnel, deletePersonnel, fetchPersonnel, type ApiPersonnelRow } from '../lib/api';
 
 export function ManagePersonnel() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState<string | null>(null);
-  const [personnel, setPersonnel] = useState<SecurityPersonnel[]>([]);
+  const [personnel, setPersonnel] = useState<ApiPersonnelRow[]>([]);
+  const [listLoading, setListLoading] = useState(true);
+  const [listError, setListError] = useState('');
+  const [formError, setFormError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const [formData, setFormData] = useState({
     username: '',
@@ -27,29 +23,64 @@ export function ManagePersonnel() {
     password: '',
   });
 
+  const loadList = useCallback(async () => {
+    if (user?.role !== 'admin') {
+      setPersonnel([]);
+      setListLoading(false);
+      return;
+    }
+    setListLoading(true);
+    setListError('');
+    try {
+      const rows = await fetchPersonnel();
+      setPersonnel(rows);
+    } catch (e) {
+      setListError(e instanceof Error ? e.message : 'Could not load personnel');
+      setPersonnel([]);
+    } finally {
+      setListLoading(false);
+    }
+  }, [user?.id, user?.role]);
+
+  useEffect(() => {
+    void loadList();
+  }, [loadList]);
+
   const handleLogout = () => {
     logout();
     navigate('/');
   };
 
-  const handleAddPersonnel = (e: React.FormEvent) => {
+  const handleAddPersonnel = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newPersonnel: SecurityPersonnel = {
-      id: (personnel.length + 1).toString(),
-      username: formData.username,
-      fullName: formData.fullName,
-      email: formData.email,
-      dateAdded: new Date().toISOString().split('T')[0],
-      status: 'Active',
-    };
-    setPersonnel([...personnel, newPersonnel]);
-    setShowAddModal(false);
-    setFormData({ username: '', fullName: '', email: '', password: '' });
+    setFormError('');
+    setSaving(true);
+    try {
+      const row = await createPersonnel({
+        username: formData.username.trim(),
+        fullName: formData.fullName.trim(),
+        email: formData.email.trim(),
+        password: formData.password,
+      });
+      setPersonnel((prev) => [...prev, row].sort((a, b) => a.username.localeCompare(b.username)));
+      setShowAddModal(false);
+      setFormData({ username: '', fullName: '', email: '', password: '' });
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Could not add personnel');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleDeletePersonnel = (id: string) => {
-    setPersonnel(personnel.filter(p => p.id !== id));
-    setShowDeleteModal(null);
+  const handleDeletePersonnel = async (id: string) => {
+    setFormError('');
+    try {
+      await deletePersonnel(id);
+      setPersonnel((prev) => prev.filter((p) => p.id !== id));
+      setShowDeleteModal(null);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Could not delete');
+    }
   };
 
   return (
@@ -87,10 +118,16 @@ export function ManagePersonnel() {
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-2xl sm:text-3xl mb-2">Manage Security Personnel</h2>
-              <p className="text-slate-600">Add or remove security guard accounts</p>
+              <p className="text-slate-600">
+                Add guard accounts stored in the database. New users can sign in as <strong>Security</strong> with the
+                username and password you set.
+              </p>
             </div>
             <button
-              onClick={() => setShowAddModal(true)}
+              onClick={() => {
+                setFormError('');
+                setShowAddModal(true);
+              }}
               className="flex items-center gap-2 px-4 py-2 bg-[var(--xu-blue)] text-white rounded-md hover:bg-blue-700 transition-colors"
             >
               <UserPlus className="h-5 w-5" />
@@ -98,6 +135,13 @@ export function ManagePersonnel() {
             </button>
           </div>
         </div>
+
+        {listError && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">{listError}</div>
+        )}
+        {formError && !showAddModal && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">{formError}</div>
+        )}
 
         {/* Personnel Table */}
         <div className="bg-white rounded-lg shadow-lg overflow-hidden">
@@ -115,10 +159,16 @@ export function ManagePersonnel() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {personnel.length === 0 ? (
+                {listLoading ? (
                   <tr>
                     <td colSpan={7} className="px-6 py-10 text-center text-slate-500 text-sm">
-                      No personnel records yet. Use &quot;Add Personnel&quot; to create entries.
+                      Loading personnel…
+                    </td>
+                  </tr>
+                ) : personnel.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-10 text-center text-slate-500 text-sm">
+                      No personnel records yet. Use &quot;Add Personnel&quot; to create a guard login in the database.
                     </td>
                   </tr>
                 ) : (
@@ -171,6 +221,9 @@ export function ManagePersonnel() {
               </button>
             </div>
             <form onSubmit={handleAddPersonnel} className="p-6 space-y-4">
+              {formError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">{formError}</div>
+              )}
               <div>
                 <label className="block text-sm text-slate-700 mb-2">Username</label>
                 <input
@@ -225,9 +278,10 @@ export function ManagePersonnel() {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2 bg-[var(--xu-blue)] text-white rounded-md hover:bg-blue-700 transition-colors"
+                  disabled={saving}
+                  className="flex-1 px-4 py-2 bg-[var(--xu-blue)] text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-60"
                 >
-                  Add Personnel
+                  {saving ? 'Saving…' : 'Add Personnel'}
                 </button>
               </div>
             </form>
@@ -246,8 +300,11 @@ export function ManagePersonnel() {
               <h3 className="text-xl text-slate-800">Delete Personnel</h3>
             </div>
             <p className="text-slate-600 mb-6">
-              Are you sure you want to delete this security personnel account? This action cannot be undone.
+              Remove this guard account from the database. They will no longer be able to sign in.
             </p>
+            {formError && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">{formError}</div>
+            )}
             <div className="flex gap-3">
               <button
                 onClick={() => setShowDeleteModal(null)}
@@ -256,7 +313,7 @@ export function ManagePersonnel() {
                 Cancel
               </button>
               <button
-                onClick={() => handleDeletePersonnel(showDeleteModal)}
+                onClick={() => void handleDeletePersonnel(showDeleteModal)}
                 className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
               >
                 Delete

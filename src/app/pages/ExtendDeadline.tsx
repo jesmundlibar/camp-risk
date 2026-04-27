@@ -1,13 +1,23 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useAuth } from '../context/AuthContext';
-import { ArrowLeft, Calendar, Save } from 'lucide-react';
+import { ArrowLeft, Save } from 'lucide-react';
 import { xuLogo } from '../constants/xuLogo';
+import { extendMitigationDeadline, fetchReport, parseMitigationActionRef, type ApiReport } from '../lib/api';
 
 export function ExtendDeadline() {
   const navigate = useNavigate();
   const { logout } = useAuth();
   const { actionId } = useParams<{ actionId: string }>();
+
+  const parsed = useMemo(() => (actionId ? parseMitigationActionRef(actionId) : null), [actionId]);
+
+  const [report, setReport] = useState<ApiReport | null>(null);
+  const [loadError, setLoadError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  const [submitSuccess, setSubmitSuccess] = useState('');
 
   const [formData, setFormData] = useState({
     currentDueDate: '',
@@ -17,15 +27,75 @@ export function ExtendDeadline() {
     notifyTeam: true,
   });
 
+  useEffect(() => {
+    if (!parsed) {
+      setReport(null);
+      setLoadError('Invalid action ID. Expected format like RPT-12-A1.');
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setLoadError('');
+      try {
+        const r = await fetchReport(parsed.reportId);
+        if (cancelled) return;
+        setReport(r);
+        const rows = r?.assessment?.mitigation_actions ?? [];
+        const row = rows[parsed.index1 - 1];
+        if (!r?.assessment || !row || typeof row !== 'object') {
+          setLoadError('Could not find this mitigation action on the report.');
+          return;
+        }
+        const due = (row as { due_date?: string; dueDate?: string }).due_date ?? (row as { dueDate?: string }).dueDate ?? '';
+        const dueStr = typeof due === 'string' && due.length >= 10 ? due.slice(0, 10) : String(due || '');
+        setFormData((prev) => ({
+          ...prev,
+          currentDueDate: dueStr || '—',
+        }));
+      } catch (e) {
+        if (!cancelled) {
+          setReport(null);
+          setLoadError(e instanceof Error ? e.message : 'Could not load report');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [parsed]);
+
   const handleLogout = () => {
     logout();
     navigate('/');
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    alert('Deadline extended successfully!');
-    navigate('/admin/dashboard');
+    setSubmitError('');
+    setSubmitSuccess('');
+    if (!actionId?.trim()) {
+      setSubmitError('Missing action ID.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await extendMitigationDeadline(actionId.trim(), {
+        newDueDate: formData.newDueDate,
+        extensionReason: formData.extensionReason,
+        justification: formData.justification.trim(),
+        notifyTeam: formData.notifyTeam,
+      });
+      setSubmitSuccess(res.message);
+      window.setTimeout(() => navigate('/admin/dashboard'), 1800);
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Request failed');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -71,34 +141,37 @@ export function ExtendDeadline() {
         <div className="mb-6">
           <h2 className="text-2xl sm:text-3xl mb-2">Extend Deadline</h2>
           <p className="text-slate-600">
-            Action ID: {actionId ?? '—'} — mitigation actions will appear here once tracked in the system.
+            Action ID: {actionId ?? '—'}
+            {parsed ? ` · Report ${parsed.reportId}, mitigation #${parsed.index1}` : null}
           </p>
         </div>
 
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-6 mb-6">
-          <div className="flex items-start gap-3 mb-4">
-            <div className="p-2 bg-amber-100 rounded-full">
-              <Calendar className="h-5 w-5 text-amber-600" />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-lg text-slate-800 mb-2">No action on file</h3>
-              <p className="text-sm text-slate-600">
-                There is no overdue mitigation task loaded for this ID. You can still use the form below as a
-                placeholder.
-              </p>
-            </div>
+        {loading ? (
+          <p className="text-slate-600 text-sm mb-6">Loading action…</p>
+        ) : null}
+
+        {loadError ? (
+          <div className="bg-red-50 border border-red-200 text-red-800 rounded-lg p-4 mb-6 text-sm">{loadError}</div>
+        ) : null}
+
+        {submitError ? (
+          <div className="bg-red-50 border border-red-200 text-red-800 rounded-lg p-4 mb-6 text-sm">{submitError}</div>
+        ) : null}
+
+        {submitSuccess ? (
+          <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-lg p-4 mb-6 text-sm">
+            {submitSuccess}
           </div>
-        </div>
+        ) : null}
 
         <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-lg p-6 space-y-6">
           <div>
             <label className="block text-sm text-slate-700 mb-2">Current Due Date</label>
             <input
               type="text"
+              readOnly
               value={formData.currentDueDate}
-              onChange={(e) => setFormData({ ...formData, currentDueDate: e.target.value })}
-              placeholder="—"
-              className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--xu-blue)]"
+              className="w-full px-3 py-2 border border-slate-200 rounded-md bg-slate-50 text-slate-700"
             />
           </div>
 
@@ -114,7 +187,7 @@ export function ExtendDeadline() {
               className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--xu-blue)]"
               min={new Date().toISOString().split('T')[0]}
             />
-            <p className="text-xs text-slate-500 mt-1">Select a future date for the new deadline</p>
+            <p className="text-xs text-slate-500 mt-1">Pick the new deadline (today or later).</p>
           </div>
 
           <div>
@@ -159,7 +232,7 @@ export function ExtendDeadline() {
                 onChange={(e) => setFormData({ ...formData, notifyTeam: e.target.checked })}
                 className="w-4 h-4 text-[var(--xu-blue)] border-slate-300 rounded focus:ring-[var(--xu-blue)]"
               />
-              <span className="text-sm text-slate-700">Notify assigned team of deadline change</span>
+              <span className="text-sm text-slate-700">Record that the assigned team should be notified (for your records)</span>
             </label>
           </div>
 
@@ -173,10 +246,11 @@ export function ExtendDeadline() {
             </button>
             <button
               type="submit"
-              className="flex-1 px-6 py-3 bg-amber-500 text-white rounded-md hover:bg-amber-600 transition-colors flex items-center justify-center gap-2"
+              disabled={submitting || !!loadError || !parsed}
+              className="flex-1 px-6 py-3 bg-amber-500 text-white rounded-md hover:bg-amber-600 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:pointer-events-none"
             >
               <Save className="h-5 w-5" />
-              Extend Deadline
+              {submitting ? 'Saving…' : 'Extend Deadline'}
             </button>
           </div>
         </form>

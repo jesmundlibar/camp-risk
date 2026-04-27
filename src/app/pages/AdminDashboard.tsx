@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useLocation } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 import { AlertCircle, Clock, X, Users } from 'lucide-react';
 import { xuLogo } from '../constants/xuLogo';
-import { fetchReports } from '../lib/api';
+import {
+  fetchDashboardSummary,
+  fetchReports,
+  type MitigationTracking,
+} from '../lib/api';
 
 type PendingReportRow = {
   id: string;
@@ -38,15 +42,32 @@ type RiskRegisterRow = { id: string; severity: string; status: string };
 
 export function AdminDashboard() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, logout } = useAuth();
   const [showModal, setShowModal] = useState<'pending' | 'risks' | 'overdue' | null>(null);
   const [pendingReports, setPendingReports] = useState<PendingReportRow[]>([]);
   const [reportsLoading, setReportsLoading] = useState(true);
-  const [openRisks] = useState<OpenRiskRow[]>([]);
-  const [overdueActions] = useState<OverdueActionRow[]>([]);
-  const [riskRegister] = useState<RiskRegisterRow[]>([]);
+  const [openRisks, setOpenRisks] = useState<OpenRiskRow[]>([]);
+  const [overdueActions, setOverdueActions] = useState<OverdueActionRow[]>([]);
+  const [riskRegister, setRiskRegister] = useState<RiskRegisterRow[]>([]);
+  const [openRisksCount, setOpenRisksCount] = useState(0);
+  const [overdueActionsCount, setOverdueActionsCount] = useState(0);
+  const [mitigationTracking, setMitigationTracking] = useState<MitigationTracking>({
+    total_actions: 0,
+    completed_actions: 0,
+    in_progress_actions: 0,
+    overdue_actions: 0,
+    completed_pct: 0,
+    in_progress_pct: 0,
+    overdue_pct: 0,
+  });
 
   useEffect(() => {
+    if (user?.role !== 'admin') {
+      setPendingReports([]);
+      setReportsLoading(false);
+      return;
+    }
     let cancelled = false;
     (async () => {
       setReportsLoading(true);
@@ -74,7 +95,71 @@ export function AdminDashboard() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [user?.id, user?.role, location.pathname]);
+
+  useEffect(() => {
+    if (user?.role !== 'admin') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const d = await fetchDashboardSummary();
+        if (cancelled) return;
+        setOpenRisksCount(d.open_risks_count);
+        setOverdueActionsCount(d.overdue_actions_count);
+        setOpenRisks(
+          d.open_risks.map((r) => ({
+            id: r.id,
+            hazard: r.hazard,
+            severity: r.severity,
+            status: r.status,
+            score: r.score,
+            location: r.location,
+            dateAssessed: r.dateAssessed,
+          })),
+        );
+        setOverdueActions(
+          d.overdue_actions.map((a) => ({
+            id: a.id,
+            task: a.task,
+            dueDate: a.dueDate,
+            daysOverdue: a.daysOverdue,
+            assignedTo: a.assignedTo,
+            relatedRisk: a.relatedRisk,
+          })),
+        );
+        setRiskRegister(
+          d.risk_register.map((row) => ({
+            id: row.id,
+            severity: row.severity,
+            status: row.status,
+          })),
+        );
+        if (d.mitigation_tracking) {
+          setMitigationTracking(d.mitigation_tracking);
+        }
+      } catch {
+        if (!cancelled) {
+          setOpenRisksCount(0);
+          setOverdueActionsCount(0);
+          setOpenRisks([]);
+          setOverdueActions([]);
+          setRiskRegister([]);
+          setMitigationTracking({
+            total_actions: 0,
+            completed_actions: 0,
+            in_progress_actions: 0,
+            overdue_actions: 0,
+            completed_pct: 0,
+            in_progress_pct: 0,
+            overdue_pct: 0,
+          });
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.role, user?.id, location.pathname]);
 
   const handleLogout = () => {
     logout();
@@ -140,7 +225,7 @@ export function AdminDashboard() {
               <h3 className="text-slate-600 text-sm sm:text-base">Open Risks</h3>
               <AlertCircle className="h-6 w-6 lg:h-7 lg:w-7 text-[var(--xu-gold)]" />
             </div>
-            <p className="text-4xl lg:text-5xl text-slate-800 mb-2">{openRisks.length}</p>
+            <p className="text-4xl lg:text-5xl text-slate-800 mb-2">{openRisksCount}</p>
             <p className="text-xs text-slate-500">Click to view details</p>
           </div>
 
@@ -152,7 +237,7 @@ export function AdminDashboard() {
               <h3 className="text-slate-600 text-sm sm:text-base">Overdue Actions</h3>
               <AlertCircle className="h-6 w-6 lg:h-7 lg:w-7 text-[var(--xu-red)]" />
             </div>
-            <p className="text-4xl lg:text-5xl text-slate-800 mb-2">{overdueActions.length}</p>
+            <p className="text-4xl lg:text-5xl text-slate-800 mb-2">{overdueActionsCount}</p>
             <p className="text-xs text-slate-500">Click to view details</p>
           </div>
         </div>
@@ -271,40 +356,53 @@ export function AdminDashboard() {
             </div>
           </div>
 
-          {/* Mitigation Tracking */}
+          {/* Mitigation Tracking — from saved risk assessments (see API /api/dashboard/summary/) */}
           <div className="bg-white rounded-lg shadow-lg p-6">
             <div className="border-b border-slate-200 pb-4 mb-6">
               <h3 className="text-xl text-slate-800">Mitigation Tracking</h3>
-              <p className="text-sm text-slate-600 mt-1">Summary (no records yet)</p>
+              <p className="text-sm text-slate-600 mt-1">
+                {mitigationTracking.total_actions === 0
+                  ? 'No mitigation action rows yet. They appear after an SSIO assessment is submitted with actions filled in.'
+                  : `${mitigationTracking.total_actions} action(s) across open and closed incidents.`}
+              </p>
             </div>
             <div className="space-y-6">
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-slate-700">Completed Actions</span>
-                  <span className="text-sm text-green-600">0%</span>
+                  <span className="text-sm text-slate-700">Completed (closed incidents)</span>
+                  <span className="text-sm text-green-600">{mitigationTracking.completed_pct}%</span>
                 </div>
                 <div className="w-full bg-slate-200 rounded-full h-3">
-                  <div className="bg-green-500 h-3 rounded-full" style={{ width: '0%' }}></div>
+                  <div
+                    className="bg-green-500 h-3 rounded-full transition-all"
+                    style={{ width: `${mitigationTracking.completed_pct}%` }}
+                  ></div>
                 </div>
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-slate-700">In Progress</span>
-                  <span className="text-sm text-yellow-600">0%</span>
+                  <span className="text-sm text-slate-700">In progress (on track)</span>
+                  <span className="text-sm text-yellow-600">{mitigationTracking.in_progress_pct}%</span>
                 </div>
                 <div className="w-full bg-slate-200 rounded-full h-3">
-                  <div className="bg-yellow-500 h-3 rounded-full" style={{ width: '0%' }}></div>
+                  <div
+                    className="bg-yellow-500 h-3 rounded-full transition-all"
+                    style={{ width: `${mitigationTracking.in_progress_pct}%` }}
+                  ></div>
                 </div>
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm text-slate-700">Overdue</span>
-                  <span className="text-sm text-red-600">0%</span>
+                  <span className="text-sm text-red-600">{mitigationTracking.overdue_pct}%</span>
                 </div>
                 <div className="w-full bg-slate-200 rounded-full h-3">
-                  <div className="bg-red-500 h-3 rounded-full" style={{ width: '0%' }}></div>
+                  <div
+                    className="bg-red-500 h-3 rounded-full transition-all"
+                    style={{ width: `${mitigationTracking.overdue_pct}%` }}
+                  ></div>
                 </div>
               </div>
             </div>

@@ -12,7 +12,7 @@ export function mount(container, { navigate }) {
   const brand = document.createElement('div');
   brand.className = 'text-center mb-8';
   const logo = document.createElement('img');
-  logo.src = '/assets/logo.svg';
+  logo.src = '/xu-logo.png';
   logo.alt = 'Xavier University';
   logo.className = 'h-32 mx-auto mb-4';
   const h1 = document.createElement('h1');

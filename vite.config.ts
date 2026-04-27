@@ -5,8 +5,19 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   server: {
+    host: true,
+    port: 5173,
     proxy: {
-      '/api': { target: 'http://127.0.0.1:8000', changeOrigin: true },
+      '/api': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+        configure(proxy) {
+          proxy.on('proxyReq', (proxyReq, req) => {
+            const c = req.headers.cookie
+            if (c) proxyReq.setHeader('Cookie', c)
+          })
+        },
+      },
       '/media': { target: 'http://127.0.0.1:8000', changeOrigin: true },
     },
   },

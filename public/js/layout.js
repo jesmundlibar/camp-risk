@@ -1,5 +1,5 @@
 export function brandHeader({
-  logoSrc = '/assets/logo.svg',
+  logoSrc = '/xu-logo.png',
   title = 'CAMP-RISK',
   subtitle = 'Risk Management System',
   logoClass = 'h-12',

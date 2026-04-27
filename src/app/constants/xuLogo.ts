@@ -1,2 +1,2 @@
-/** Logo file in `public/` — replace `public/xu-logo.svg` with your official asset if needed. */
+/** Official mark: `public/xu-logo.png` (served at `/xu-logo.png`). */
 export const xuLogo = '/xu-logo.png';

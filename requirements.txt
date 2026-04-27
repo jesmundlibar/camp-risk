@@ -62,6 +62,10 @@ Install those only with pip from the backend folder (see section 3).
   First-time database setup:
     python manage.py migrate
 
+  Demo logins for the React app (Django users + roles):
+    python manage.py seed_demo_users
+    (Creates guard / guard123 and admin / admin123 — change passwords for anything beyond local dev.)
+
   Run the API server (default for local dev with the Vite proxy):
     python manage.py runserver 127.0.0.1:8000
 

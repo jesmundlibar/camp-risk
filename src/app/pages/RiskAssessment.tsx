@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { Save, Send, AlertCircle } from 'lucide-react';
 import { xuLogo } from '../constants/xuLogo';
-import { fetchReport, type ApiReport } from '../lib/api';
+import { fetchReport, submitRiskAssessment, type ApiReport } from '../lib/api';
 
 interface MitigationAction {
   description: string;
@@ -44,9 +44,9 @@ export function RiskAssessment() {
   const [engineering, setEngineering] = useState('');
   const [administrative, setAdministrative] = useState('');
   const [ppe, setPpe] = useState('');
-  const [actions, setActions] = useState<MitigationAction[]>([
-    { description: '', dueDate: '' },
-  ]);
+  const [actions, setActions] = useState<MitigationAction[]>([{ description: '', dueDate: '' }]);
+  const [submitError, setSubmitError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const riskScore = likelihood && severity ? parseInt(likelihood) * parseInt(severity) : 0;
   const riskLevel =
@@ -68,10 +68,60 @@ export function RiskAssessment() {
     setActions(newActions);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    alert('Assessment submitted successfully!');
-    navigate('/admin/dashboard');
+    setSubmitError('');
+    if (!reportId || !sourceReport) {
+      setSubmitError('No incident loaded to assess.');
+      return;
+    }
+    if (!riskClassification.trim()) {
+      setSubmitError('Select a risk classification.');
+      return;
+    }
+    if (!likelihood || !severity) {
+      setSubmitError('Select likelihood and severity (1–4).');
+      return;
+    }
+    const eng = engineering.trim();
+    const adm = administrative.trim();
+    const ppeT = ppe.trim();
+    if (!eng || !adm || !ppeT) {
+      setSubmitError('Fill in all control measure fields (engineering, administrative, and PPE).');
+      return;
+    }
+    const filledActions = actions.filter((a) => a.description.trim() || a.dueDate);
+    if (filledActions.length === 0) {
+      setSubmitError('Add at least one mitigation action with both description and due date.');
+      return;
+    }
+    for (const a of filledActions) {
+      if (!a.description.trim() || !a.dueDate) {
+        setSubmitError('Each mitigation action row must include both description and due date (remove empty rows or complete them).');
+        return;
+      }
+    }
+    setSubmitting(true);
+    try {
+      await submitRiskAssessment(reportId, {
+        risk_classification: riskClassification,
+        likelihood: parseInt(likelihood, 10),
+        severity: parseInt(severity, 10),
+        engineering_controls: eng,
+        administrative_controls: adm,
+        ppe_controls: ppeT,
+        residual_risk: '',
+        mitigation_actions: filledActions.map((a) => ({
+          description: a.description.trim(),
+          due_date: a.dueDate,
+        })),
+      });
+      navigate('/admin/dashboard');
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Could not save assessment');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleSaveDraft = () => {
@@ -113,6 +163,9 @@ export function RiskAssessment() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-8">
+            {submitError ? (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">{submitError}</div>
+            ) : null}
             {/* Incident Details (Read-Only) */}
             <div className="bg-slate-50 rounded-lg p-4 sm:p-6 lg:p-8 border border-slate-200">
               <h3 className="text-lg lg:text-xl text-slate-800 mb-4">Incident Details</h3>
@@ -251,36 +304,39 @@ export function RiskAssessment() {
               )}
             </div>
 
-            {/* Control Measures */}
+            {/* Control measure */}
             <div>
-              <label className="block text-slate-800 mb-3">Control Measures (HIRAC Framework)</label>
+              <label className="block text-slate-800 mb-3">Control measure</label>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm text-slate-600 mb-2">Engineering Controls</label>
+                  <label className="block text-sm text-slate-600 mb-2">Engineering controls</label>
                   <input
                     type="text"
                     value={engineering}
                     onChange={(e) => setEngineering(e.target.value)}
+                    required
                     placeholder="e.g., Replace wiring, Install protective barriers"
                     className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--xu-blue)] bg-white"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-slate-600 mb-2">Administrative Controls</label>
+                  <label className="block text-sm text-slate-600 mb-2">Administrative controls</label>
                   <input
                     type="text"
                     value={administrative}
                     onChange={(e) => setAdministrative(e.target.value)}
+                    required
                     placeholder="e.g., Post warning signs, Restrict access"
                     className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--xu-blue)] bg-white"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-slate-600 mb-2">PPE Requirements</label>
+                  <label className="block text-sm text-slate-600 mb-2">PPE requirements</label>
                   <input
                     type="text"
                     value={ppe}
                     onChange={(e) => setPpe(e.target.value)}
+                    required
                     placeholder="e.g., Insulated gloves, Safety footwear"
                     className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--xu-blue)] bg-white"
                   />
@@ -304,6 +360,7 @@ export function RiskAssessment() {
                         onChange={(e) =>
                           updateAction(index, 'description', e.target.value)
                         }
+                        required={index === 0}
                         placeholder="Describe the action to be taken"
                         className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--xu-blue)] bg-white"
                       />
@@ -314,6 +371,7 @@ export function RiskAssessment() {
                         type="date"
                         value={action.dueDate}
                         onChange={(e) => updateAction(index, 'dueDate', e.target.value)}
+                        required={index === 0}
                         className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--xu-blue)] bg-white"
                       />
                     </div>
@@ -333,16 +391,21 @@ export function RiskAssessment() {
             <div className="flex flex-col sm:flex-row gap-4 justify-end pt-4 border-t border-slate-200">
               <button
                 type="button"
-                className="w-full sm:w-auto px-6 py-3 border border-slate-300 text-slate-700 rounded-md hover:bg-slate-100 transition-colors"
+                disabled={!reportId}
+                onClick={() => {
+                  if (reportId) navigate(`/admin/request-info/${encodeURIComponent(reportId)}`);
+                }}
+                className="w-full sm:w-auto px-6 py-3 border border-slate-300 text-slate-700 rounded-md hover:bg-slate-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Request More Info
+                Request more info
               </button>
               <button
                 type="submit"
-                className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 bg-[var(--xu-blue)] text-white rounded-md hover:bg-blue-700 transition-colors"
+                disabled={submitting}
+                className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 bg-[var(--xu-blue)] text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <Send className="h-4 w-4" />
-                Submit Assessment
+                {submitting ? 'Saving…' : 'Submit Assessment'}
               </button>
             </div>
           </form>

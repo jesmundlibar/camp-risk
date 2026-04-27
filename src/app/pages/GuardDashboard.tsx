@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useLocation } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 import { Clock, MapPin, FileText, Shield, X } from 'lucide-react';
 import { xuLogo } from '../constants/xuLogo';
-import { fetchReports, type ApiReport } from '../lib/api';
+import { fetchReport, fetchReports, type ApiReport } from '../lib/api';
 
 interface Report {
   id: string;
@@ -20,6 +20,7 @@ interface Report {
   room: string;
   specificLocation: string;
   photoUrl?: string | null;
+  informationRequestCount?: number;
 }
 
 function mapApiReport(r: ApiReport): Report {
@@ -38,19 +39,46 @@ function mapApiReport(r: ApiReport): Report {
     room: r.room,
     specificLocation: r.specific_location,
     photoUrl: r.photo_url,
+    informationRequestCount: r.information_request_count ?? 0,
   };
 }
 
 export function GuardDashboard() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, logout } = useAuth();
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
+  const [selectedDetail, setSelectedDetail] = useState<ApiReport | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  useEffect(() => {
+    if (!selectedReport) {
+      setSelectedDetail(null);
+      setDetailLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setDetailLoading(true);
+    void fetchReport(selectedReport.id)
+      .then((d) => {
+        if (!cancelled) setSelectedDetail(d);
+      })
+      .catch(() => {
+        if (!cancelled) setSelectedDetail(null);
+      })
+      .finally(() => {
+        if (!cancelled) setDetailLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedReport?.id]);
 
   const loadReports = useCallback(async () => {
-    if (!user?.id) {
+    if (!user?.id || user.role !== 'guard') {
       setReports([]);
       setLoading(false);
       return;
@@ -58,7 +86,7 @@ export function GuardDashboard() {
     setLoading(true);
     setLoadError('');
     try {
-      const data = await fetchReports({ submitted_by_user_id: user.id });
+      const data = await fetchReports();
       setReports(data.map(mapApiReport));
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : 'Could not load reports');
@@ -66,11 +94,11 @@ export function GuardDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [user?.id]);
+  }, [user?.id, user?.role]);
 
   useEffect(() => {
     void loadReports();
-  }, [loadReports]);
+  }, [loadReports, location.pathname]);
 
   const handleLogout = () => {
     logout();
@@ -108,12 +136,20 @@ export function GuardDashboard() {
 
         {loadError && (
           <div className="mb-6 p-4 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-900">
-            <p className="font-medium">Could not reach the server</p>
-            <p className="mt-1 text-amber-800">
-              Start the Django API on port 8000 (e.g.{' '}
-              <code className="bg-amber-100 px-1 rounded">python manage.py runserver</code> in{' '}
-              <code className="bg-amber-100 px-1 rounded">backend</code>) while Vite is running, then refresh.
-            </p>
+            <p className="font-medium">Could not load reports</p>
+            <p className="mt-1 text-amber-800">{loadError}</p>
+            {(loadError.includes('Failed to fetch') || loadError.includes('NetworkError')) && (
+              <p className="mt-2 text-amber-800">
+                Start the Django API on port 8000 (e.g.{' '}
+                <code className="bg-amber-100 px-1 rounded">python manage.py runserver</code> in{' '}
+                <code className="bg-amber-100 px-1 rounded">backend</code>) while Vite is running, then refresh.
+                Use the same host as Vite in the address bar (both <code className="bg-amber-100 px-1">localhost</code> or
+                both <code className="bg-amber-100 px-1">127.0.0.1</code>) so your login session is sent.
+              </p>
+            )}
+            {loadError.toLowerCase().includes('session') && (
+              <p className="mt-2 text-amber-800">Sign out and sign in again on this same browser URL.</p>
+            )}
           </div>
         )}
 
@@ -205,19 +241,26 @@ export function GuardDashboard() {
                       <td className="px-6 py-4 text-sm text-slate-800">{report.date}</td>
                       <td className="px-6 py-4 text-sm text-slate-800">{report.hazard}</td>
                       <td className="px-6 py-4">
-                        <span
-                          className={`inline-flex px-2 py-1 text-xs rounded-full ${
-                            report.status === 'Closed'
-                              ? 'bg-green-100 text-green-800'
-                              : report.status === 'Assessed'
-                                ? 'bg-blue-100 text-blue-800'
-                                : report.status === 'In Progress'
-                                  ? 'bg-yellow-100 text-yellow-800'
-                                  : 'bg-orange-100 text-orange-800'
-                          }`}
-                        >
-                          {report.status}
-                        </span>
+                        <div className="flex flex-col gap-1 items-start">
+                          <span
+                            className={`inline-flex px-2 py-1 text-xs rounded-full ${
+                              report.status === 'Closed'
+                                ? 'bg-green-100 text-green-800'
+                                : report.status === 'Assessed'
+                                  ? 'bg-blue-100 text-blue-800'
+                                  : report.status === 'In Progress'
+                                    ? 'bg-yellow-100 text-yellow-800'
+                                    : 'bg-orange-100 text-orange-800'
+                            }`}
+                          >
+                            {report.status}
+                          </span>
+                          {(report.informationRequestCount ?? 0) > 0 ? (
+                            <span className="inline-flex px-2 py-0.5 text-xs rounded bg-amber-100 text-amber-900">
+                              SSIO info request
+                            </span>
+                          ) : null}
+                        </div>
                       </td>
                       <td className="px-6 py-4">
                         <button
@@ -346,6 +389,32 @@ export function GuardDashboard() {
                 <p className="text-sm text-slate-600 mb-1">Submitted By</p>
                 <p className="text-slate-800">{selectedReport.submittedBy}</p>
               </div>
+
+              {detailLoading ? (
+                <p className="text-sm text-slate-500">Loading SSIO messages…</p>
+              ) : selectedDetail?.information_requests && selectedDetail.information_requests.length > 0 ? (
+                <div className="border border-amber-200 bg-amber-50 rounded-lg p-4">
+                  <p className="text-sm font-medium text-amber-950 mb-2">Messages from SSIO (information requests)</p>
+                  <p className="text-xs text-amber-900 mb-3">
+                    These are stored on your report in the system. Reply by contacting SSIO or submitting an updated
+                    report if your process allows it.
+                  </p>
+                  <ul className="space-y-3 text-sm text-amber-950">
+                    {selectedDetail.information_requests.map((ir) => (
+                      <li key={ir.id} className="border-t border-amber-200/80 pt-3 first:border-t-0 first:pt-0">
+                        <p className="text-xs text-amber-800 mb-1">
+                          {new Date(ir.created_at).toLocaleString()}
+                          {ir.payload.urgency ? ` · urgency: ${ir.payload.urgency}` : ''}
+                        </p>
+                        <p className="whitespace-pre-wrap">{ir.payload.specificQuestions ?? '—'}</p>
+                        {ir.payload.otherInfo ? (
+                          <p className="text-xs text-amber-900 mt-1">Other: {ir.payload.otherInfo}</p>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
             </div>
 
             <div className="border-t border-slate-200 px-6 py-4 flex justify-end">
