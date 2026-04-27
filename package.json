@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev:spa": "vite --port 5173",
-    "dev": "npm run build:css && npx --yes serve public -p 5173 -s",
+    "dev": "npm run dev:spa",
+    "dev:static": "npm run build:css && npx --yes serve public -p 5173 -s",
     "build": "npm run build:css",
     "build:css": "npx @tailwindcss/cli -i ./src/styles/input.css -o ./public/styles/app.css --minify",
     "watch:css": "npx @tailwindcss/cli -i ./src/styles/input.css -o ./public/styles/app.css --watch"
