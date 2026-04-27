@@ -396,8 +396,7 @@ export function GuardDashboard() {
                 <div className="border border-amber-200 bg-amber-50 rounded-lg p-4">
                   <p className="text-sm font-medium text-amber-950 mb-2">Messages from SSIO (information requests)</p>
                   <p className="text-xs text-amber-900 mb-3">
-                    These are stored on your report in the system. Reply by contacting SSIO or submitting an updated
-                    report if your process allows it.
+                    Reply by contacting SSIO or submitting an updated report.
                   </p>
                   <ul className="space-y-3 text-sm text-amber-950">
                     {selectedDetail.information_requests.map((ir) => (
