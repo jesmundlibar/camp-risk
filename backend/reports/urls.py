@@ -9,6 +9,16 @@ urlpatterns = [
     path('reports/<str:report_id>/assessment/', views.report_assessment_upsert, name='report-assessment'),
     path('reports/<str:report_id>/request-info/', views.report_request_information, name='report-request-info'),
     path(
+        'reports/<str:report_id>/extend-deadline/',
+        views.report_extend_deadline,
+        name='report-extend-deadline',
+    ),
+    path(
+        'reports/<str:report_id>/mitigation/',
+        views.report_mitigation_update,
+        name='report-mitigation-update',
+    ),
+    path(
         'mitigation/actions/<str:action_ref>/extend-deadline/',
         views.mitigation_extend_deadline,
         name='mitigation-extend-deadline',
