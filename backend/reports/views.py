@@ -447,6 +447,176 @@ def report_request_information(request, report_id: str):
 
 @csrf_exempt
 @require_http_methods(['POST'])
+def report_extend_deadline(request, report_id: str):
+    """Extend due date of a mitigation action by report ID."""
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Authentication required'}, status=401)
+    if not _is_admin(request.user):
+        return JsonResponse({'error': 'Admin role required'}, status=403)
+    try:
+        pk = _parse_report_pk(report_id)
+    except ValueError:
+        return JsonResponse({'error': 'Invalid report id'}, status=400)
+    try:
+        report = IncidentReport.objects.select_related('risk_assessment').get(pk=pk)
+    except IncidentReport.DoesNotExist:
+        return JsonResponse({'error': 'Not found'}, status=404)
+    try:
+        ra = report.risk_assessment
+    except RiskAssessment.DoesNotExist:
+        return JsonResponse({'error': 'No risk assessment for this report'}, status=404)
+
+    try:
+        body = json.loads(request.body.decode() or '{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+
+    new_raw = (body.get('new_due_date') or body.get('newDueDate') or '').strip()
+    if not new_raw:
+        return JsonResponse({'error': 'new_due_date is required'}, status=400)
+    try:
+        new_due = str(date.fromisoformat(str(new_raw)[:10]))
+    except ValueError:
+        return JsonResponse({'error': 'new_due_date must be a valid ISO date (YYYY-MM-DD)'}, status=400)
+
+    idx_raw = body.get('action_index') or body.get('actionIndex') or 1
+    try:
+        action_1based = int(idx_raw)
+    except (TypeError, ValueError):
+        return JsonResponse({'error': 'action_index must be an integer'}, status=400)
+    if action_1based < 1:
+        return JsonResponse({'error': 'action_index must be at least 1'}, status=400)
+    idx = action_1based - 1
+
+    actions = list(ra.mitigation_actions or [])
+    if not (0 <= idx < len(actions)) or not isinstance(actions[idx], dict):
+        return JsonResponse({'error': 'Mitigation action not found'}, status=404)
+
+    row = dict(actions[idx])
+    old_due = (row.get('due_date') or row.get('dueDate') or '')[:32]
+    row['due_date'] = new_due
+    ext_log = row.get('extension_log')
+    if not isinstance(ext_log, list):
+        ext_log = []
+    ext_log.append(
+        {
+            'previous_due': old_due,
+            'new_due': new_due,
+            'reason': ((body.get('extension_reason') or body.get('extensionReason') or '').strip())[:128],
+            'justification': ((body.get('justification') or '').strip())[:2000],
+            'notify_team': bool(body.get('notify_team', body.get('notifyTeam', True))),
+            'changed_by': request.user.get_username(),
+        }
+    )
+    row['extension_log'] = ext_log[-25:]
+    actions[idx] = row
+    ra.mitigation_actions = actions
+    ra.save(update_fields=['mitigation_actions', 'updated_at'])
+
+    ref = f'{report.public_id()}-A{action_1based}'
+    _append_history(
+        report,
+        report.status,
+        report.status,
+        request.user,
+        note=f'Deadline extended for mitigation {ref} to {new_due}',
+    )
+    return JsonResponse(
+        {
+            'ok': True,
+            'action_ref': ref,
+            'new_due_date': new_due,
+            'message': f'Deadline updated to {new_due} for {ref}.',
+        },
+        status=200,
+    )
+
+
+@csrf_exempt
+@require_http_methods(['PATCH'])
+def report_mitigation_update(request, report_id: str):
+    """Patch tracking fields of the first mitigation action after assessment."""
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Authentication required'}, status=401)
+    if not _is_admin(request.user):
+        return JsonResponse({'error': 'Admin role required'}, status=403)
+    try:
+        pk = _parse_report_pk(report_id)
+    except ValueError:
+        return JsonResponse({'error': 'Invalid report id'}, status=400)
+    try:
+        report = IncidentReport.objects.select_related('risk_assessment').get(pk=pk)
+    except IncidentReport.DoesNotExist:
+        return JsonResponse({'error': 'Not found'}, status=404)
+    try:
+        ra = report.risk_assessment
+    except RiskAssessment.DoesNotExist:
+        return JsonResponse({'error': 'No risk assessment for this report'}, status=404)
+
+    try:
+        body = json.loads(request.body.decode() or '{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+
+    actions = list(ra.mitigation_actions or [])
+    if not actions:
+        return JsonResponse({'error': 'No mitigation actions on this assessment'}, status=400)
+    if not isinstance(actions[0], dict):
+        return JsonResponse({'error': 'Invalid mitigation_actions data'}, status=400)
+
+    row = dict(actions[0])
+    if 'mitigation_plan' in body or 'mitigationPlan' in body:
+        plan = (body.get('mitigation_plan') or body.get('mitigationPlan') or '').strip()
+        if not plan:
+            return JsonResponse({'error': 'mitigation_plan cannot be empty'}, status=400)
+        row['description'] = plan
+
+    if 'due_date' in body or 'dueDate' in body:
+        due_raw = (body.get('due_date') or body.get('dueDate') or '').strip()
+        if not due_raw:
+            return JsonResponse({'error': 'due_date cannot be empty'}, status=400)
+        try:
+            row['due_date'] = str(date.fromisoformat(str(due_raw)[:10]))
+        except ValueError:
+            return JsonResponse({'error': 'due_date must be a valid ISO date (YYYY-MM-DD)'}, status=400)
+
+    if 'assigned_to' in body or 'assignedTo' in body:
+        row['assigned_to'] = (body.get('assigned_to') or body.get('assignedTo') or '').strip()[:255]
+
+    if 'action_status' in body or 'status' in body:
+        row['action_status'] = (body.get('action_status') or body.get('status') or '').strip()[:64]
+
+    if 'notes' in body:
+        row['mitigation_notes'] = (body.get('notes') or '').strip()[:5000]
+
+    actions[0] = row
+    ra.mitigation_actions = actions
+    ra.save(update_fields=['mitigation_actions', 'updated_at'])
+
+    old_status = report.status
+    action_status = (row.get('action_status') or '').lower()
+    if action_status == 'completed' and report.status != IncidentReport.Status.CLOSED:
+        report.status = IncidentReport.Status.CLOSED
+        report.save(update_fields=['status'])
+        _append_history(report, old_status, IncidentReport.Status.CLOSED, request.user, 'Closed after mitigation completed')
+    elif report.status == IncidentReport.Status.ASSESSED:
+        report.status = IncidentReport.Status.IN_PROGRESS
+        report.save(update_fields=['status'])
+        _append_history(report, old_status, IncidentReport.Status.IN_PROGRESS, request.user, 'Mitigation tracking updated')
+
+    return JsonResponse(
+        {
+            'ok': True,
+            'report_id': report.public_id(),
+            'message': 'Mitigation updated.',
+            'status_code': report.status,
+        },
+        status=200,
+    )
+
+
+@csrf_exempt
+@require_http_methods(['POST'])
 def mitigation_extend_deadline(request, action_ref: str):
     if not request.user.is_authenticated:
         return JsonResponse({'error': 'Authentication required'}, status=401)
