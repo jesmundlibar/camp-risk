@@ -81,6 +81,12 @@ export function UpdateMitigation() {
     return [...TEAM_OPTIONS];
   }, [formData.assignedTo]);
 
+  const extendActionId = useMemo(() => {
+    const id = (riskId || '').trim();
+    if (!id) return '';
+    return `${id}-A1`;
+  }, [riskId]);
+
   const handleLogout = () => {
     logout();
     navigate('/');
@@ -223,9 +229,11 @@ export function UpdateMitigation() {
               type="date"
               required
               value={formData.dueDate}
-              onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
-              className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--xu-blue)]"
+              readOnly
+              disabled
+              className="w-full px-3 py-2 border border-slate-300 rounded-md bg-slate-100 text-slate-600 cursor-not-allowed"
             />
+            <p className="text-xs text-slate-500 mt-1">Due date changes are managed via the Extend Deadline button.</p>
           </div>
 
           <div>
@@ -260,6 +268,14 @@ export function UpdateMitigation() {
               className="flex-1 px-6 py-3 border border-slate-300 text-slate-700 rounded-md hover:bg-slate-100 transition-colors"
             >
               Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate(`/admin/extend-deadline/${encodeURIComponent(extendActionId)}`)}
+              disabled={!!loadError || !report || !extendActionId}
+              className="flex-1 px-6 py-3 bg-amber-500 text-white rounded-md hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:pointer-events-none"
+            >
+              Extend Deadline
             </button>
             <button
               type="submit"
