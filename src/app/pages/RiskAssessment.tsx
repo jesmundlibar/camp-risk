@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { Save, Send, AlertCircle } from 'lucide-react';
 import { xuLogo } from '../constants/xuLogo';
@@ -7,6 +7,17 @@ import { fetchReport, submitRiskAssessment, type ApiReport } from '../lib/api';
 interface MitigationAction {
   description: string;
   dueDate: string;
+}
+
+interface RiskAssessmentDraft {
+  riskClassification: string;
+  likelihood: string;
+  severity: string;
+  engineering: string;
+  administrative: string;
+  ppe: string;
+  residualRisk: string;
+  actions: MitigationAction[];
 }
 
 export function RiskAssessment() {
@@ -44,15 +55,155 @@ export function RiskAssessment() {
   const [engineering, setEngineering] = useState('');
   const [administrative, setAdministrative] = useState('');
   const [ppe, setPpe] = useState('');
+  const [residualRisk, setResidualRisk] = useState('');
   const [actions, setActions] = useState<MitigationAction[]>([{ description: '', dueDate: '' }]);
   const [submitError, setSubmitError] = useState('');
+  const [draftMessage, setDraftMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [showImageModal, setShowImageModal] = useState(false);
+  /** True while image is shown in fullscreen (Browser API or viewport fallback). */
+  const [imageFullscreen, setImageFullscreen] = useState(false);
+  const [fullscreenFallback, setFullscreenFallback] = useState(false);
+  const [fsImageScale, setFsImageScale] = useState(1);
+  const fullscreenHostRef = useRef<HTMLDivElement>(null);
+  const fullscreenWheelRef = useRef<HTMLDivElement>(null);
+  const imageFullscreenRef = useRef(false);
+  /** Drag-to-pan in fullscreen viewer (same pointer id only). */
+  const imagePanRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
+
+  const requestFullscreenEl = useCallback((el: Element) => {
+    const node = el as HTMLElement & {
+      webkitRequestFullscreen?: () => Promise<void> | void;
+    };
+    if (typeof node.requestFullscreen === 'function') {
+      return node.requestFullscreen();
+    }
+    if (typeof node.webkitRequestFullscreen === 'function') {
+      return Promise.resolve(node.webkitRequestFullscreen());
+    }
+    return Promise.reject(new Error('Fullscreen not supported'));
+  }, []);
+
+  const exitFullscreenDoc = useCallback(async () => {
+    const doc = document as Document & {
+      webkitExitFullscreen?: () => Promise<void> | void;
+    };
+    try {
+      if (document.fullscreenElement && typeof document.exitFullscreen === 'function') {
+        await document.exitFullscreen();
+      } else if (typeof doc.webkitExitFullscreen === 'function') {
+        await doc.webkitExitFullscreen();
+      }
+    } catch {
+      // Ignore if not in fullscreen.
+    }
+  }, []);
+
+  const closeImageViewer = useCallback(async () => {
+    await exitFullscreenDoc();
+    setImageFullscreen(false);
+    setFullscreenFallback(false);
+    setFsImageScale(1);
+    setShowImageModal(false);
+  }, [exitFullscreenDoc]);
+
+  const exitImageFullscreenOnly = useCallback(async () => {
+    await exitFullscreenDoc();
+    setImageFullscreen(false);
+    setFullscreenFallback(false);
+    setFsImageScale(1);
+  }, [exitFullscreenDoc]);
+
+  useEffect(() => {
+    if (!imageFullscreen) return;
+    const host = fullscreenHostRef.current;
+    if (!host) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        await requestFullscreenEl(host);
+        if (!cancelled) setFullscreenFallback(false);
+      } catch {
+        if (!cancelled) setFullscreenFallback(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [imageFullscreen, requestFullscreenEl]);
+
+  useEffect(() => {
+    const onFsChange = () => {
+      const fs =
+        document.fullscreenElement ??
+        (document as Document & { webkitFullscreenElement?: Element | null }).webkitFullscreenElement ??
+        null;
+      if (!fs && imageFullscreenRef.current) {
+        setImageFullscreen(false);
+        setFullscreenFallback(false);
+        setFsImageScale(1);
+      }
+    };
+    document.addEventListener('fullscreenchange', onFsChange);
+    document.addEventListener('webkitfullscreenchange', onFsChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', onFsChange);
+      document.removeEventListener('webkitfullscreenchange', onFsChange);
+    };
+  }, []);
+
+  imageFullscreenRef.current = imageFullscreen;
+
+  useEffect(() => {
+    if (!imageFullscreen) return;
+    const el = fullscreenWheelRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      const horizontalIntent = e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY);
+      if (horizontalIntent) {
+        e.preventDefault();
+        const amount = e.shiftKey ? e.deltaY : e.deltaX;
+        el.scrollLeft += amount;
+        return;
+      }
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.06 : 0.94;
+      setFsImageScale((s) => {
+        const next = s * factor;
+        return Math.min(10, Math.max(0.2, Number(next.toFixed(4))));
+      });
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [imageFullscreen]);
+
+  useEffect(() => {
+    if (!showImageModal && !imageFullscreen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (imageFullscreen) void exitImageFullscreenOnly();
+      else void closeImageViewer();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showImageModal, imageFullscreen, exitImageFullscreenOnly, closeImageViewer]);
+
+  useEffect(() => {
+    if (!fullscreenFallback) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [fullscreenFallback]);
+
+  const draftStorageKey = reportId ? `camp-risk:draft:${reportId}` : '';
 
   const riskScore = likelihood && severity ? parseInt(likelihood) * parseInt(severity) : 0;
   const riskLevel =
-    riskScore >= 12
+    riskScore >= 20
       ? 'High Risk'
-      : riskScore >= 6
+      : riskScore >= 12
       ? 'Medium Risk'
       : riskScore > 0
       ? 'Low Risk'
@@ -68,6 +219,33 @@ export function RiskAssessment() {
     setActions(newActions);
   };
 
+  useEffect(() => {
+    if (!draftStorageKey) return;
+    try {
+      const raw = window.localStorage.getItem(draftStorageKey);
+      if (!raw) return;
+      const draft = JSON.parse(raw) as RiskAssessmentDraft;
+      if (draft.riskClassification) setRiskClassification(draft.riskClassification);
+      if (draft.likelihood) setLikelihood(draft.likelihood);
+      if (draft.severity) setSeverity(draft.severity);
+      if (draft.engineering) setEngineering(draft.engineering);
+      if (draft.administrative) setAdministrative(draft.administrative);
+      if (draft.ppe) setPpe(draft.ppe);
+      if (draft.residualRisk) setResidualRisk(draft.residualRisk);
+      if (Array.isArray(draft.actions) && draft.actions.length > 0) {
+        setActions(draft.actions);
+      }
+    } catch {
+      // Ignore malformed saved drafts.
+    }
+  }, [draftStorageKey]);
+
+  useEffect(() => {
+    if (!draftMessage) return;
+    const t = window.setTimeout(() => setDraftMessage(''), 4800);
+    return () => window.clearTimeout(t);
+  }, [draftMessage]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitError('');
@@ -80,7 +258,7 @@ export function RiskAssessment() {
       return;
     }
     if (!likelihood || !severity) {
-      setSubmitError('Select likelihood and severity (1–4).');
+      setSubmitError('Select likelihood and severity (1–5).');
       return;
     }
     const eng = engineering.trim();
@@ -88,6 +266,11 @@ export function RiskAssessment() {
     const ppeT = ppe.trim();
     if (!eng || !adm || !ppeT) {
       setSubmitError('Fill in all control measure fields (engineering, administrative, and PPE).');
+      return;
+    }
+    const residual = residualRisk.trim();
+    if (!residual) {
+      setSubmitError('Residual risk is required.');
       return;
     }
     const filledActions = actions.filter((a) => a.description.trim() || a.dueDate);
@@ -110,13 +293,16 @@ export function RiskAssessment() {
         engineering_controls: eng,
         administrative_controls: adm,
         ppe_controls: ppeT,
-        residual_risk: '',
+        residual_risk: residual,
         mitigation_actions: filledActions.map((a) => ({
           description: a.description.trim(),
           due_date: a.dueDate,
         })),
       });
-      navigate('/admin/dashboard');
+      if (draftStorageKey) {
+        window.localStorage.removeItem(draftStorageKey);
+      }
+      navigate(`/admin/view-risk/${encodeURIComponent(reportId)}`);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Could not save assessment');
     } finally {
@@ -125,7 +311,27 @@ export function RiskAssessment() {
   };
 
   const handleSaveDraft = () => {
-    alert('Draft saved successfully!');
+    if (!draftStorageKey) {
+      setSubmitError('Cannot save draft: missing report ID.');
+      return;
+    }
+    const payload: RiskAssessmentDraft = {
+      riskClassification,
+      likelihood,
+      severity,
+      engineering,
+      administrative,
+      ppe,
+      residualRisk,
+      actions,
+    };
+    window.localStorage.setItem(draftStorageKey, JSON.stringify(payload));
+    setDraftMessage('');
+    window.setTimeout(
+      () => setDraftMessage('Draft saved. Reopen this report anytime to continue where you left off.'),
+      0,
+    );
+    setSubmitError('');
   };
 
   return (
@@ -166,6 +372,11 @@ export function RiskAssessment() {
             {submitError ? (
               <div className="p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-700">{submitError}</div>
             ) : null}
+            {draftMessage ? (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-md text-sm text-emerald-800">
+                {draftMessage}
+              </div>
+            ) : null}
             {/* Incident Details (Read-Only) */}
             <div className="bg-slate-50 rounded-lg p-4 sm:p-6 lg:p-8 border border-slate-200">
               <h3 className="text-lg lg:text-xl text-slate-800 mb-4">Incident Details</h3>
@@ -189,14 +400,18 @@ export function RiskAssessment() {
                   </div>
                   <div>
                     {sourceReport.photo_url ? (
-                      <a
-                        href={sourceReport.photo_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[var(--xu-blue)] hover:underline"
-                      >
-                        View attached image
-                      </a>
+                      <button
+                      type="button"
+                      onClick={() => {
+                        setFsImageScale(1);
+                        setShowImageModal(true);
+                        setImageFullscreen(false);
+                        setFullscreenFallback(false);
+                      }}
+                      className="text-[var(--xu-blue)] hover:underline"
+                    >
+                      View attached image
+                    </button>
                     ) : (
                       <span className="text-slate-500">No image attached</span>
                     )}
@@ -226,11 +441,16 @@ export function RiskAssessment() {
                 className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--xu-blue)] bg-white"
               >
                 <option value="">Select Risk</option>
-                <option value="electrocution">Electrocution</option>
-                <option value="fire">Fire Hazard</option>
-                <option value="equipment">Equipment Damage</option>
-                <option value="injury">Physical Injury</option>
-                <option value="slip">Slip/Trip/Fall</option>
+                <option value="earthquake-impact">Earthquake Impact</option>
+                <option value="fire-hazard">Fire Hazard</option>
+                <option value="laboratory-hazard">Laboratory Hazard</option>
+                <option value="campus-security">Campus Security Risk</option>
+                <option value="traffic-safety">Traffic Safety Risk</option>
+                <option value="flooding-impact">Flooding Impact</option>
+                <option value="electrical-hazard">Electrical Hazard</option>
+                <option value="evacuation-failure">Emergency Evacuation Failure</option>
+                <option value="slip-trip-fall">Slip/Trip/Fall</option>
+                <option value="public-health">Public Health Risk</option>
               </select>
             </div>
 
@@ -239,9 +459,9 @@ export function RiskAssessment() {
               <label className="block text-slate-800 mb-3">Risk Rating</label>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm text-slate-600 mb-2">Likelihood (1-4)</label>
+                  <label className="block text-sm text-slate-600 mb-2">Likelihood (1-5)</label>
                   <div className="flex gap-4">
-                    {[1, 2, 3, 4].map((num) => (
+                    {[1, 2, 3, 4, 5].map((num) => (
                       <label
                         key={num}
                         className="flex items-center gap-2 cursor-pointer"
@@ -255,15 +475,28 @@ export function RiskAssessment() {
                           required
                           className="h-4 w-4 text-[var(--xu-blue)]"
                         />
-                        <span className="text-slate-700">{num}</span>
+                        <span className="text-slate-700">
+                          {num}
+                          <span className="ml-1 text-xs text-slate-500">
+                            {num === 1
+                              ? 'Rare'
+                              : num === 2
+                              ? 'Unlikely'
+                              : num === 3
+                              ? 'Possible'
+                              : num === 4
+                              ? 'Likely'
+                              : 'Very likely'}
+                          </span>
+                        </span>
                       </label>
                     ))}
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm text-slate-600 mb-2">Severity (1-4)</label>
+                  <label className="block text-sm text-slate-600 mb-2">Severity (1-5)</label>
                   <div className="flex gap-4">
-                    {[1, 2, 3, 4].map((num) => (
+                    {[1, 2, 3, 4, 5].map((num) => (
                       <label
                         key={num}
                         className="flex items-center gap-2 cursor-pointer"
@@ -277,7 +510,20 @@ export function RiskAssessment() {
                           required
                           className="h-4 w-4 text-[var(--xu-blue)]"
                         />
-                        <span className="text-slate-700">{num}</span>
+                        <span className="text-slate-700">
+                          {num}
+                          <span className="ml-1 text-xs text-slate-500">
+                            {num === 1
+                              ? 'Insignificant'
+                              : num === 2
+                              ? 'Minor'
+                              : num === 3
+                              ? 'Moderate'
+                              : num === 4
+                              ? 'Major'
+                              : 'Catastrophic'}
+                          </span>
+                        </span>
                       </label>
                     ))}
                   </div>
@@ -342,6 +588,18 @@ export function RiskAssessment() {
                   />
                 </div>
               </div>
+            </div>
+
+            <div>
+              <label className="block text-slate-800 mb-2">Residual Risk (after controls)</label>
+              <textarea
+                value={residualRisk}
+                onChange={(e) => setResidualRisk(e.target.value)}
+                rows={3}
+                required
+                placeholder="Describe the remaining risk after implementing controls."
+                className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--xu-blue)] bg-white resize-none"
+              />
             </div>
 
             {/* Mitigation Actions */}
@@ -411,6 +669,108 @@ export function RiskAssessment() {
           </form>
         </div>
       </main>
+      {showImageModal && sourceReport?.photo_url && !imageFullscreen ? (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg p-4 w-full max-w-4xl shadow-xl">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-slate-800 text-lg font-medium">Attached Incident Image</h3>
+              <button
+                type="button"
+                onClick={() => void closeImageViewer()}
+                className="px-3 py-1.5 text-sm border border-slate-300 rounded-md hover:bg-slate-100"
+              >
+                Close
+              </button>
+            </div>
+            <div className="overflow-auto max-h-[70vh] rounded-md border border-slate-200 bg-slate-50 flex items-center justify-center min-h-[160px]">
+              <button
+                type="button"
+                onClick={() => {
+                  setFsImageScale(1);
+                  setImageFullscreen(true);
+                }}
+                className="p-0 border-0 bg-transparent cursor-zoom-in focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--xu-blue)] rounded-md"
+                aria-label="Open image fullscreen"
+              >
+                <img src={sourceReport.photo_url} alt="Incident attachment preview" className="max-w-full max-h-[65vh] object-contain rounded-md" />
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showImageModal && sourceReport?.photo_url && imageFullscreen ? (
+        <div
+          ref={fullscreenHostRef}
+          className={`bg-black flex flex-col text-white w-screen h-screen ${fullscreenFallback ? 'fixed inset-0 z-[2147483647]' : ''}`}
+        >
+          <div className="shrink-0 flex justify-end gap-2 px-4 py-3 bg-black/80 select-none">
+            <button
+              type="button"
+              onClick={() => void exitImageFullscreenOnly()}
+              className="px-4 py-2 text-sm rounded-md bg-white/10 hover:bg-white/20 border border-white/20 text-white outline-none select-none caret-transparent cursor-pointer focus-visible:ring-2 focus-visible:ring-white/70"
+            >
+              Exit fullscreen
+            </button>
+            <button
+              type="button"
+              onClick={() => void closeImageViewer()}
+              className="px-4 py-2 text-sm rounded-md bg-white text-slate-900 hover:bg-slate-100 outline-none select-none caret-transparent cursor-pointer focus-visible:ring-2 focus-visible:ring-[var(--xu-blue)]"
+            >
+              Close
+            </button>
+          </div>
+          <div
+            ref={fullscreenWheelRef}
+            role="presentation"
+            className="flex-1 min-h-0 overflow-auto flex items-center justify-center p-4 cursor-grab active:cursor-grabbing touch-none"
+            onPointerDown={(e) => {
+              if (e.button !== 0) return;
+              imagePanRef.current = { pointerId: e.pointerId, x: e.clientX, y: e.clientY };
+              e.currentTarget.setPointerCapture(e.pointerId);
+            }}
+            onPointerMove={(e) => {
+              const st = imagePanRef.current;
+              if (!st || st.pointerId !== e.pointerId) return;
+              const dx = e.clientX - st.x;
+              const dy = e.clientY - st.y;
+              st.x = e.clientX;
+              st.y = e.clientY;
+              e.currentTarget.scrollLeft -= dx;
+              e.currentTarget.scrollTop -= dy;
+            }}
+            onPointerUp={(e) => {
+              if (imagePanRef.current?.pointerId === e.pointerId) {
+                imagePanRef.current = null;
+              }
+              try {
+                e.currentTarget.releasePointerCapture(e.pointerId);
+              } catch {
+                /* already released */
+              }
+            }}
+            onPointerCancel={(e) => {
+              imagePanRef.current = null;
+              try {
+                e.currentTarget.releasePointerCapture(e.pointerId);
+              } catch {
+                /* already released */
+              }
+            }}
+          >
+            <img
+              src={sourceReport.photo_url}
+              alt="Incident attachment"
+              className="max-w-none object-contain select-none"
+              draggable={false}
+              style={{
+                transform: `scale(${fsImageScale})`,
+                transformOrigin: 'center center',
+              }}
+            />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -25,14 +25,22 @@ export function IncidentReport() {
   const [existingPhotoUrl, setExistingPhotoUrl] = useState<string | null>(null);
 
   const hazardOptions = [
-    'Slip/Trip Hazard',
-    'Electrical Fault',
-    'Fire Hazard',
-    'Chemical Spill',
-    'Security Incident',
-    'Structural Damage',
-    'Equipment Failure',
-    'Other (specify)',
+    'Earthquake Hazard',
+    'Fire in Campus Buildings',
+    'Laboratory Chemical Exposure',
+    'Biological Hazard Exposure',
+    'Campus Security Incident',
+    'Traffic and Vehicle Congestion',
+    'Flooding',
+    'Electrical Hazards',
+    'Emergency Evacuation Failure',
+    'Slips, Trips, and Falls',
+    'Tree/Branch Fall',
+    'Heat Stress',
+    'Hazardous Waste Management',
+    'Construction and Maintenance Hazards',
+    'Public Health Risks',
+    'Others',
   ];
 
   useEffect(() => {
@@ -57,7 +65,11 @@ export function IncidentReport() {
           );
           return;
         }
-        setHazardTypes(Array.isArray(r.hazard_types) ? [...r.hazard_types] : []);
+        setHazardTypes(
+          (Array.isArray(r.hazard_types) ? r.hazard_types : []).map((h) =>
+            h === 'Other (specify)' ? 'Others' : h,
+          ),
+        );
         setOtherHazard(r.other_hazard || '');
         setBuilding(r.building || '');
         setFloor(r.floor || '');
@@ -200,7 +212,7 @@ export function IncidentReport() {
                       </label>
                     ))}
                   </div>
-                  {hazardTypes.includes('Other (specify)') && (
+                  {hazardTypes.includes('Others') && (
                     <input
                       type="text"
                       value={otherHazard}

@@ -2,15 +2,23 @@ import json
 import re
 from datetime import date
 from datetime import datetime
+from io import BytesIO
 from typing import Optional, Tuple
+from xml.sax.saxutils import escape
 
 from django.db.models import Count, Prefetch
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from accounts.models import UserProfile
+
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import inch
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from .models import IncidentReport, InformationRequest, ReportStatusHistory, RiskAssessment
 
@@ -29,16 +37,39 @@ def _is_admin(user) -> bool:
 
 
 def _priority_from_hazards(hazard_types: list) -> str:
-    high = {'Fire Hazard', 'Chemical Spill', 'Electrical Fault', 'Structural Damage'}
-    if any(h in high for h in (hazard_types or [])):
+    high = {
+        'Earthquake Hazard',
+        'Fire in Campus Buildings',
+        'Laboratory Chemical Exposure',
+        'Biological Hazard Exposure',
+        'Campus Security Incident',
+        'Traffic and Vehicle Congestion',
+        # Keep legacy labels to preserve old behavior for existing reports.
+        'Fire Hazard',
+        'Chemical Spill',
+        'Security Incident',
+    }
+    medium = {
+        'Flooding',
+        'Electrical Hazards',
+        'Emergency Evacuation Failure',
+        # Keep legacy labels to preserve old behavior for existing reports.
+        'Electrical Fault',
+        'Structural Damage',
+    }
+    hazards = set(hazard_types or [])
+    if hazards & high:
         return 'High'
-    return 'Medium'
+    if hazards & medium:
+        return 'Medium'
+    return 'Low'
 
 
 def _risk_level_from_score(score: int) -> str:
-    if score >= 12:
+    # Client rubric: 0-11 Low, 12-19 Medium, 20-25 High.
+    if score >= 20:
         return 'High Risk'
-    if score >= 6:
+    if score >= 12:
         return 'Medium Risk'
     if score > 0:
         return 'Low Risk'
@@ -362,9 +393,9 @@ def report_assessment_upsert(request, report_id: str):
         li = int(likelihood)
         se = int(severity)
     except (TypeError, ValueError):
-        return JsonResponse({'error': 'likelihood and severity must be integers 1-4'}, status=400)
-    if not (1 <= li <= 4 and 1 <= se <= 4):
-        return JsonResponse({'error': 'likelihood and severity must be between 1 and 4'}, status=400)
+        return JsonResponse({'error': 'likelihood and severity must be integers 1-5'}, status=400)
+    if not (1 <= li <= 5 and 1 <= se <= 5):
+        return JsonResponse({'error': 'likelihood and severity must be between 1 and 5'}, status=400)
 
     risk_score = li * se
     risk_level = _risk_level_from_score(risk_score)
@@ -387,6 +418,8 @@ def report_assessment_upsert(request, report_id: str):
         return JsonResponse({'error': 'Administrative control measure is required'}, status=400)
     if not ppe:
         return JsonResponse({'error': 'PPE control measure is required'}, status=400)
+    if not residual:
+        return JsonResponse({'error': 'Residual risk is required'}, status=400)
 
     try:
         existing_ra = report.risk_assessment
@@ -854,6 +887,65 @@ def mitigation_tracking_update(request, report_id: str):
     )
 
 
+@csrf_exempt
+@require_http_methods(['POST'])
+def mitigation_complete_action(request, action_ref: str):
+    """Mark a mitigation action as completed by action reference (e.g. RPT-12-A1)."""
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Authentication required'}, status=401)
+    if not _is_admin(request.user):
+        return JsonResponse({'error': 'Admin role required'}, status=403)
+    parsed = _parse_mitigation_action_ref(action_ref)
+    if not parsed:
+        return JsonResponse({'error': 'Invalid action reference (expected e.g. RPT-12-A1)'}, status=400)
+    pk, action_1based = parsed
+    idx = action_1based - 1
+    if idx < 0:
+        return JsonResponse({'error': 'Invalid action index'}, status=400)
+    try:
+        report = IncidentReport.objects.select_related('risk_assessment').get(pk=pk)
+    except IncidentReport.DoesNotExist:
+        return JsonResponse({'error': 'Report not found'}, status=404)
+    try:
+        ra = report.risk_assessment
+    except RiskAssessment.DoesNotExist:
+        return JsonResponse({'error': 'No risk assessment for this report'}, status=404)
+
+    actions = list(ra.mitigation_actions or [])
+    if not (0 <= idx < len(actions)) or not isinstance(actions[idx], dict):
+        return JsonResponse({'error': 'Mitigation action not found'}, status=404)
+
+    row = dict(actions[idx])
+    row['action_status'] = 'Completed'
+    row['completed_at'] = timezone.localtime(timezone.now()).isoformat()
+    row['completed_by'] = request.user.get_username()
+    actions[idx] = row
+    ra.mitigation_actions = actions
+    ra.save(update_fields=['mitigation_actions', 'updated_at'])
+
+    old_status = report.status
+    if report.status != IncidentReport.Status.CLOSED:
+        report.status = IncidentReport.Status.CLOSED
+        report.save(update_fields=['status'])
+        _append_history(
+            report,
+            old_status,
+            IncidentReport.Status.CLOSED,
+            request.user,
+            note=f'Mitigation action {action_ref} marked completed',
+        )
+
+    return JsonResponse(
+        {
+            'ok': True,
+            'action_ref': action_ref,
+            'message': f'{action_ref} marked as completed.',
+            'status_code': report.status,
+        },
+        status=200,
+    )
+
+
 def _severity_label(risk_level: str) -> str:
     if 'High' in risk_level:
         return 'High'
@@ -869,8 +961,33 @@ def dashboard_summary(request):
     if not _is_admin(request.user):
         return JsonResponse({'error': 'Admin role required'}, status=403)
 
-    pending_count = IncidentReport.objects.filter(status=IncidentReport.Status.PENDING).count()
-    open_reports = IncidentReport.objects.filter(
+    start_raw = (request.GET.get('start_date') or '').strip()
+    end_raw = (request.GET.get('end_date') or '').strip()
+    start_d = None
+    end_d = None
+    if start_raw:
+        try:
+            start_d = date.fromisoformat(start_raw[:10])
+        except ValueError:
+            return JsonResponse({'error': 'start_date must be YYYY-MM-DD'}, status=400)
+    if end_raw:
+        try:
+            end_d = date.fromisoformat(end_raw[:10])
+        except ValueError:
+            return JsonResponse({'error': 'end_date must be YYYY-MM-DD'}, status=400)
+    if start_d and end_d and start_d > end_d:
+        return JsonResponse({'error': 'start_date cannot be after end_date'}, status=400)
+
+    date_filter = {}
+    if start_d:
+        date_filter['created_at__date__gte'] = start_d
+    if end_d:
+        date_filter['created_at__date__lte'] = end_d
+
+    base_reports = IncidentReport.objects.filter(**date_filter) if date_filter else IncidentReport.objects.all()
+
+    pending_count = base_reports.filter(status=IncidentReport.Status.PENDING).count()
+    open_reports = base_reports.filter(
         status__in=[IncidentReport.Status.ASSESSED, IncidentReport.Status.IN_PROGRESS]
     ).select_related('risk_assessment')
     open_risks_count = open_reports.count()
@@ -933,7 +1050,7 @@ def dashboard_summary(request):
         )
 
     hazard_frequency: dict[str, int] = {}
-    recent = IncidentReport.objects.all()[:500]
+    recent = base_reports[:500]
     for r in recent:
         for h in r.hazard_types or []:
             if isinstance(h, str) and h.strip():
@@ -943,7 +1060,23 @@ def dashboard_summary(request):
         key=lambda x: -x['count'],
     )[:20]
 
-    mitigation_tracking = _mitigation_tracking_stats(today, open_reports, overdue_actions)
+    top_risk_types = (
+        RiskAssessment.objects.filter(report__in=base_reports).values('risk_classification')
+        .annotate(count=Count('id'))
+        .order_by('-count')[:10]
+    )
+    top_risk_types_list = [
+        {'risk_type': (row.get('risk_classification') or 'Uncategorized'), 'count': row.get('count', 0)}
+        for row in top_risk_types
+    ]
+
+    closed_reports = base_reports.filter(status=IncidentReport.Status.CLOSED).select_related('risk_assessment')
+    mitigation_tracking = _mitigation_tracking_stats(
+        today,
+        open_reports,
+        overdue_actions,
+        closed_reports_qs=closed_reports,
+    )
 
     return JsonResponse(
         {
@@ -954,16 +1087,229 @@ def dashboard_summary(request):
             'overdue_actions': overdue_actions[:50],
             'risk_register': risk_register_rows[:50],
             'hazard_frequency': hazard_frequency_list,
+            'top_risk_types': top_risk_types_list,
             'mitigation_tracking': mitigation_tracking,
         }
     )
 
 
-def _mitigation_tracking_stats(today, open_reports_qs, overdue_actions_list):
-    """Bucket mitigation actions: completed (closed incidents), in-progress (open, on time), overdue."""
-    closed_reports = IncidentReport.objects.filter(status=IncidentReport.Status.CLOSED).select_related(
-        'risk_assessment'
+_PDF_CLASS_LABELS = {
+    'earthquake-impact': 'Earthquake Impact',
+    'fire-hazard': 'Fire Hazard',
+    'laboratory-hazard': 'Laboratory Hazard',
+    'campus-security': 'Campus Security Risk',
+    'traffic-safety': 'Traffic Safety Risk',
+    'flooding-impact': 'Flooding Impact',
+    'electrical-hazard': 'Electrical Hazard',
+    'evacuation-failure': 'Emergency Evacuation Failure',
+    'slip-trip-fall': 'Slip / Trip / Fall',
+    'public-health': 'Public Health Risk',
+}
+
+_PDF_LIK_LABELS = {1: 'Rare', 2: 'Unlikely', 3: 'Possible', 4: 'Likely', 5: 'Very likely'}
+
+_PDF_SEV_LABELS = {
+    1: 'Insignificant',
+    2: 'Minor',
+    3: 'Moderate',
+    4: 'Major',
+    5: 'Catastrophic',
+}
+
+
+def _pdf_p(text: str, style: ParagraphStyle) -> Paragraph:
+    safe = escape(str(text or '')).replace('\n', '<br/>')
+    return Paragraph(safe, style)
+
+
+def _build_assessment_pdf_report(report: IncidentReport, ra: RiskAssessment) -> bytes:
+    buf = BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=letter,
+        rightMargin=0.75 * inch,
+        leftMargin=0.75 * inch,
+        topMargin=0.65 * inch,
+        bottomMargin=0.65 * inch,
+        title=f'{report.public_id()} risk assessment',
     )
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        name='CampTitle',
+        parent=styles['Heading1'],
+        fontSize=14,
+        leading=18,
+        spaceAfter=6,
+        textColor=colors.HexColor('#1e40af'),
+    )
+    sub_style = ParagraphStyle(
+        name='CampSub',
+        parent=styles['Normal'],
+        fontSize=9,
+        leading=11,
+        textColor=colors.HexColor('#64748b'),
+    )
+    h2 = ParagraphStyle(
+        name='CampH2',
+        parent=styles['Heading2'],
+        fontSize=11,
+        leading=14,
+        spaceBefore=10,
+        spaceAfter=6,
+        textColor=colors.HexColor('#0f172a'),
+    )
+    body = ParagraphStyle(name='CampBody', parent=styles['Normal'], fontSize=10, leading=13)
+    tbl_cell = ParagraphStyle(name='CampTblCell', parent=styles['Normal'], fontSize=8, leading=10)
+
+    story: list = []
+    story.append(Paragraph('CAMP-RISK', title_style))
+    story.append(_pdf_p('Xavier University – Risk Assessment Report (HIRAC-aligned summary)', sub_style))
+    gen = timezone.localtime(timezone.now()).strftime('%Y-%m-%d %H:%M %Z').strip()
+    story.append(_pdf_p(f'Generated: {gen}', sub_style))
+    story.append(Spacer(1, 0.12 * inch))
+
+    story.append(Paragraph('1. Incident', h2))
+    story.append(_pdf_p(f'Report ID: {report.public_id()}', body))
+    story.append(_pdf_p(f'Status: {report.get_status_display()}', body))
+    story.append(_pdf_p(f'Hazard summary: {report.hazard_summary()}', body))
+    hz = ', '.join(str(h) for h in (report.hazard_types or []) if str(h).strip())
+    story.append(_pdf_p(f'Hazard types recorded: {hz or "—"}', body))
+    if report.other_hazard:
+        story.append(_pdf_p(f'Other hazard detail: {report.other_hazard}', body))
+    story.append(_pdf_p(f'Location: {report.location_line()}', body))
+    story.append(_pdf_p(f'Reported by: {report.submitted_by_name}', body))
+    created = timezone.localtime(report.created_at)
+    story.append(_pdf_p(f'Report submitted: {created.strftime("%Y-%m-%d %I:%M %p")}', body))
+    story.append(_pdf_p(f'Incident description:\n{report.description or "—"}', body))
+    story.append(Spacer(1, 0.08 * inch))
+
+    cls = ra.risk_classification or ''
+    cls_label = _PDF_CLASS_LABELS.get(cls, cls or '—')
+    li = ra.likelihood
+    se = ra.severity
+    try:
+        li_i = int(li)
+        li_txt = f'{li_i} ({_PDF_LIK_LABELS.get(li_i, "—")})'
+    except (TypeError, ValueError):
+        li_txt = '—'
+    try:
+        se_i = int(se)
+        se_txt = f'{se_i} ({_PDF_SEV_LABELS.get(se_i, "—")})'
+    except (TypeError, ValueError):
+        se_txt = '—'
+    assessed_by = ''
+    try:
+        if ra.assessed_by:
+            assessed_by = ra.assessed_by.get_full_name().strip() or ra.assessed_by.get_username()
+    except Exception:
+        assessed_by = ''
+    assessed_at = timezone.localtime(ra.updated_at).strftime('%Y-%m-%d %I:%M %p')
+
+    story.append(Paragraph('2. Risk assessment', h2))
+    story.append(_pdf_p(f'Risk classification: {cls_label}', body))
+    story.append(_pdf_p(f'Likelihood: {li_txt}', body))
+    story.append(_pdf_p(f'Severity: {se_txt}', body))
+    story.append(_pdf_p(f'Risk score: {ra.risk_score}   Level: {ra.risk_level}', body))
+    story.append(_pdf_p(f'Residual risk (after controls): {ra.residual_risk or "—"}', body))
+    story.append(_pdf_p(f'Assessed by: {assessed_by or "—"}', body))
+    story.append(_pdf_p(f'Assessment last updated: {assessed_at}', body))
+    story.append(Spacer(1, 0.06 * inch))
+
+    story.append(Paragraph('3. Control measures', h2))
+    story.append(_pdf_p(f'Engineering: {ra.engineering_controls or "—"}', body))
+    story.append(_pdf_p(f'Administrative: {ra.administrative_controls or "—"}', body))
+    story.append(_pdf_p(f'PPE: {ra.ppe_controls or "—"}', body))
+    story.append(Spacer(1, 0.08 * inch))
+
+    story.append(Paragraph('4. Mitigation actions', h2))
+    mit_rows = [['#', 'Action', 'Due date']]
+    for i, act in enumerate(ra.mitigation_actions or [], start=1):
+        if not isinstance(act, dict):
+            continue
+        desc = (act.get('description') or '')[:2000]
+        due = str(act.get('due_date') or act.get('dueDate') or '')
+        mit_rows.append(
+            [
+                Paragraph(escape(str(i)), tbl_cell),
+                _pdf_p(desc, tbl_cell),
+                _pdf_p(due, tbl_cell),
+            ]
+        )
+    if len(mit_rows) == 1:
+        story.append(_pdf_p('No mitigation actions recorded.', body))
+    else:
+        t = Table(mit_rows, colWidths=[0.35 * inch, 4.9 * inch, 1.1 * inch])
+        t.setStyle(
+            TableStyle(
+                [
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e40af')),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 9),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e1')),
+                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8fafc')]),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 5),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+                    ('TOPPADDING', (0, 0), (-1, -1), 5),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+                ]
+            )
+        )
+        story.append(t)
+
+    irs = list(report.information_requests.all()[:10])
+    if irs:
+        story.append(Spacer(1, 0.1 * inch))
+        story.append(Paragraph('5. Information requests (on file)', h2))
+        for ir in irs:
+            created_ir = timezone.localtime(ir.created_at).strftime('%Y-%m-%d %H:%M')
+            payload = ir.payload or {}
+            qs = payload.get('specificQuestions') or ''
+            story.append(_pdf_p(f'— {created_ir}: {qs}', body))
+
+    doc.build(story)
+    data = buf.getvalue()
+    buf.close()
+    return data
+
+
+@require_http_methods(['GET'])
+def report_assessment_pdf(request, report_id: str):
+    """Printable PDF after risk assessment (admin only)."""
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Authentication required'}, status=401)
+    if not _is_admin(request.user):
+        return JsonResponse({'error': 'Admin role required'}, status=403)
+    try:
+        pk = _parse_report_pk(report_id)
+    except ValueError:
+        return JsonResponse({'error': 'Invalid report id'}, status=400)
+    try:
+        report = IncidentReport.objects.select_related('risk_assessment').get(pk=pk)
+    except IncidentReport.DoesNotExist:
+        return JsonResponse({'error': 'Not found'}, status=404)
+    try:
+        ra = report.risk_assessment
+    except RiskAssessment.DoesNotExist:
+        return JsonResponse({'error': 'No risk assessment for this report yet'}, status=404)
+
+    pdf_bytes = _build_assessment_pdf_report(report, ra)
+    filename = f'{report.public_id()}-risk-assessment.pdf'
+    resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+    # Inline disposition lets the browser open PDF preview first
+    # (with native download/print controls in the viewer).
+    resp['Content-Disposition'] = f'inline; filename="{filename}"'
+    return resp
+
+
+def _mitigation_tracking_stats(today, open_reports_qs, overdue_actions_list, closed_reports_qs=None):
+    """Bucket mitigation actions: completed (closed incidents), in-progress (open, on time), overdue."""
+    closed_reports = closed_reports_qs
+    if closed_reports is None:
+        closed_reports = IncidentReport.objects.filter(status=IncidentReport.Status.CLOSED).select_related(
+            'risk_assessment'
+        )
     completed_actions = 0
     for r in closed_reports:
         try:

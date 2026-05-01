@@ -12,6 +12,7 @@
     "watch:css": "npx @tailwindcss/cli -i ./src/styles/input.css -o ./public/styles/app.css --watch"
   },
   "dependencies": {
+    "jspdf": "^4.2.1",
     "lucide-react": "^0.468.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",

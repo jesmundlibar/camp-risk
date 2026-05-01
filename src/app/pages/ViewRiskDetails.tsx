@@ -1,21 +1,56 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useAuth } from '../context/AuthContext';
-import { AlertCircle, ArrowLeft } from 'lucide-react';
+import { AlertCircle, ArrowLeft, FileDown } from 'lucide-react';
 import { xuLogo } from '../constants/xuLogo';
-import { fetchReport, type ApiReport, type ApiRiskAssessmentDetail } from '../lib/api';
+import {
+  downloadAssessmentPdf,
+  fetchReport,
+  openAssessmentPdf,
+  type ApiReport,
+  type ApiRiskAssessmentDetail,
+} from '../lib/api';
 
 const CLASS_LABELS: Record<string, string> = {
-  electrocution: 'Electrocution',
-  fire: 'Fire hazard',
-  equipment: 'Equipment damage',
-  injury: 'Physical injury',
-  slip: 'Slip / trip / fall',
+  'earthquake-impact': 'Earthquake Impact',
+  'fire-hazard': 'Fire Hazard',
+  'laboratory-hazard': 'Laboratory Hazard',
+  'campus-security': 'Campus Security Risk',
+  'traffic-safety': 'Traffic Safety Risk',
+  'flooding-impact': 'Flooding Impact',
+  'electrical-hazard': 'Electrical Hazard',
+  'evacuation-failure': 'Emergency Evacuation Failure',
+  'slip-trip-fall': 'Slip / Trip / Fall',
+  'public-health': 'Public Health Risk',
 };
 
 function formatClassification(code: string) {
   if (!code) return '—';
   return CLASS_LABELS[code] ?? code;
+}
+
+function likelihoodLabel(value: number) {
+  return (
+    {
+      1: 'Rare',
+      2: 'Unlikely',
+      3: 'Possible',
+      4: 'Likely',
+      5: 'Very likely',
+    }[value] ?? '—'
+  );
+}
+
+function severityLabel(value: number) {
+  return (
+    {
+      1: 'Insignificant',
+      2: 'Minor',
+      3: 'Moderate',
+      4: 'Major',
+      5: 'Catastrophic',
+    }[value] ?? '—'
+  );
 }
 
 function MitigationList({ assessment }: { assessment: ApiRiskAssessmentDetail }) {
@@ -45,6 +80,8 @@ export function ViewRiskDetails() {
   const [report, setReport] = useState<ApiReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfAction, setPdfAction] = useState<'open' | 'download'>('open');
 
   useEffect(() => {
     if (!riskId) {
@@ -93,7 +130,41 @@ export function ViewRiskDetails() {
               <p className="text-sm text-slate-600">Risk Management System</p>
             </div>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            {assessment && riskId ? (
+              <button
+                type="button"
+                disabled={pdfLoading}
+                onClick={() => {
+                  setPdfLoading(true);
+                  try {
+                    if (pdfAction === 'download') {
+                      downloadAssessmentPdf(riskId);
+                    } else {
+                      openAssessmentPdf(riskId);
+                    }
+                  } catch (e) {
+                    alert(e instanceof Error ? e.message : 'Could not process PDF action');
+                  } finally {
+                    setPdfLoading(false);
+                  }
+                }}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-[var(--xu-blue)] text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <FileDown className="h-4 w-4 shrink-0" />
+                {pdfLoading ? 'Preparing PDF…' : 'Open PDF report'}
+              </button>
+            ) : null}
+            {assessment && riskId ? (
+              <select
+                value={pdfAction}
+                onChange={(e) => setPdfAction(e.target.value as 'open' | 'download')}
+                className="px-4 py-2 text-sm border border-slate-300 rounded-md bg-white text-slate-800 min-w-[170px]"
+              >
+                <option value="open">Open preview</option>
+                <option value="download">Download</option>
+              </select>
+            ) : null}
             <button
               type="button"
               onClick={() => navigate('/admin/dashboard')}
@@ -210,7 +281,8 @@ export function ViewRiskDetails() {
                 <div>
                   <span className="text-slate-500">Likelihood × severity</span>
                   <p className="text-slate-800 mt-1">
-                    {assessment.likelihood} × {assessment.severity}
+                    {assessment.likelihood} ({likelihoodLabel(assessment.likelihood)}) × {assessment.severity} (
+                    {severityLabel(assessment.severity)})
                   </p>
                 </div>
                 <div>
@@ -238,6 +310,10 @@ export function ViewRiskDetails() {
                 <div>
                   <span className="text-slate-500 block mb-1">PPE</span>
                   <p className="text-slate-800">{assessment.ppe_controls || '—'}</p>
+                </div>
+                <div>
+                  <span className="text-slate-500 block mb-1">Residual risk</span>
+                  <p className="text-slate-800">{assessment.residual_risk || '—'}</p>
                 </div>
               </div>
             </div>

@@ -274,15 +274,6 @@ export function GuardDashboard() {
                           >
                             View
                           </button>
-                          {report.statusCode === 'pending' ? (
-                            <button
-                              type="button"
-                              onClick={() => navigate(`/guard/report/edit/${encodeURIComponent(report.id)}`)}
-                              className="text-sm text-slate-700 underline decoration-slate-400 hover:text-slate-900"
-                            >
-                              Update report
-                            </button>
-                          ) : null}
                         </div>
                       </td>
                     </tr>

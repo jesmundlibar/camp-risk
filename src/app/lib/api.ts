@@ -14,6 +14,10 @@ export function apiUrl(path: string): string {
   return path.startsWith('/') ? path : `/${path}`;
 }
 
+export function assessmentPdfUrl(reportId: string): string {
+  return apiUrl(`/api/reports/${encodeURIComponent(reportId)}/assessment-pdf/`);
+}
+
 export interface ApiUser {
   id: string;
   username: string;
@@ -208,6 +212,7 @@ export interface DashboardSummary {
   }>;
   risk_register: Array<{ id: string; severity: string; status: string }>;
   hazard_frequency: Array<{ hazard: string; count: number }>;
+  top_risk_types: Array<{ risk_type: string; count: number }>;
 }
 
 export interface ApiPersonnelRow {
@@ -259,8 +264,18 @@ export async function deletePersonnel(userId: string): Promise<void> {
   }
 }
 
-export async function fetchDashboardSummary(): Promise<DashboardSummary> {
-  const res = await fetch(apiUrl('/api/dashboard/summary/'), fetchDefaults);
+export async function fetchDashboardSummary(params?: {
+  startDate?: string;
+  endDate?: string;
+}): Promise<DashboardSummary> {
+  const url = new URL(apiUrl('/api/dashboard/summary/'), window.location.origin);
+  if (params?.startDate) {
+    url.searchParams.set('start_date', params.startDate);
+  }
+  if (params?.endDate) {
+    url.searchParams.set('end_date', params.endDate);
+  }
+  const res = await fetch(url.toString(), fetchDefaults);
   if (res.status === 401 || res.status === 403) {
     throw new Error('You need an administrator session to load the dashboard summary.');
   }
@@ -323,6 +338,47 @@ export async function submitRiskAssessment(
   return body as { ok: boolean; report_id: string; risk_score: number; risk_level: string; status_code: string };
 }
 
+/** Open printable PDF endpoint in a new tab for browser preview/print. */
+export async function openAssessmentPdf(reportId: string): Promise<void> {
+  const previewUrl = assessmentPdfUrl(reportId);
+  const preview = window.open(previewUrl, '_blank', 'noopener');
+  if (preview) {
+    return;
+  }
+  // Fallback if popup is blocked.
+  window.location.assign(previewUrl);
+}
+
+/** Download assessment PDF directly from endpoint. */
+export function downloadAssessmentPdf(reportId: string): void {
+  const url = assessmentPdfUrl(reportId);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${(reportId || 'report').replace(/[^\w.-]+/g, '_')}-risk-assessment.pdf`;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+/** Open PDF and trigger browser print dialog. */
+export function printAssessmentPdf(reportId: string): void {
+  const url = assessmentPdfUrl(reportId);
+  const win = window.open(url, '_blank', 'noopener');
+  if (!win) {
+    window.location.assign(url);
+    return;
+  }
+  window.setTimeout(() => {
+    try {
+      win.focus();
+      win.print();
+    } catch {
+      // Ignore if browser blocks automated print.
+    }
+  }, 900);
+}
+
 /** e.g. RPT-12-A1 → report RPT-12, 1-based action index */
 export function parseMitigationActionRef(actionRef: string): { reportId: string; index1: number } | null {
   const m = /^RPT-(\d+)-A(\d+)$/i.exec((actionRef || '').trim());
@@ -361,6 +417,23 @@ export async function extendMitigationDeadline(
     throw new Error(typeof body.error === 'string' ? body.error : 'Could not extend deadline');
   }
   return body as { ok: boolean; action_ref: string; new_due_date: string; message: string };
+}
+
+export async function completeMitigationAction(
+  actionRef: string,
+): Promise<{ ok: boolean; action_ref: string; message: string; status_code: string }> {
+  const path = `/api/mitigation/actions/${encodeURIComponent(actionRef)}/complete/`;
+  const res = await fetch(apiUrl(path), {
+    ...fetchDefaults,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(typeof body.error === 'string' ? body.error : 'Could not mark action as completed');
+  }
+  return body as { ok: boolean; action_ref: string; message: string; status_code: string };
 }
 
 export async function updateMitigationTracking(

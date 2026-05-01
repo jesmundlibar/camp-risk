@@ -38,7 +38,7 @@ class IncidentReport(models.Model):
 
     def hazard_summary(self) -> str:
         types = list(self.hazard_types or [])
-        if self.other_hazard and 'Other (specify)' in types:
+        if self.other_hazard and ('Others' in types or 'Other (specify)' in types):
             return self.other_hazard.strip() or ', '.join(types) or 'Incident'
         return ', '.join(types) if types else 'Incident'
 

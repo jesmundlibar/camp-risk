@@ -117,8 +117,8 @@ export function ManagePersonnel() {
         <div className="mb-8">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-2xl sm:text-3xl mb-2">Manage Security Personnel</h2>
-              <p className="text-slate-600">
+              <h2 className="text-2xl sm:text-[2rem] tracking-tight text-slate-800 mb-2">Manage Security Personnel</h2>
+              <p className="text-sm sm:text-base text-slate-600 leading-relaxed max-w-3xl">
                 Add guard accounts stored in the database. New users can sign in as <strong>Security</strong> with the
                 username and password you set.
               </p>
@@ -128,9 +128,9 @@ export function ManagePersonnel() {
                 setFormError('');
                 setShowAddModal(true);
               }}
-              className="flex items-center gap-2 px-4 py-2 bg-[var(--xu-blue)] text-white rounded-md hover:bg-blue-700 transition-colors"
+              className="inline-flex items-center gap-2 px-3 py-1.5 text-sm bg-[var(--xu-blue)] text-white rounded-md hover:bg-blue-700 transition-colors"
             >
-              <UserPlus className="h-5 w-5" />
+              <UserPlus className="h-4 w-4" />
               Add Personnel
             </button>
           </div>
@@ -144,18 +144,18 @@ export function ManagePersonnel() {
         )}
 
         {/* Personnel Table */}
-        <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+        <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <th className="px-6 py-3 text-left text-sm text-slate-600">ID</th>
-                  <th className="px-6 py-3 text-left text-sm text-slate-600">Username</th>
-                  <th className="px-6 py-3 text-left text-sm text-slate-600">Full Name</th>
-                  <th className="px-6 py-3 text-left text-sm text-slate-600">Email</th>
-                  <th className="px-6 py-3 text-left text-sm text-slate-600">Date Added</th>
-                  <th className="px-6 py-3 text-left text-sm text-slate-600">Status</th>
-                  <th className="px-6 py-3 text-left text-sm text-slate-600">Actions</th>
+                  <th className="px-6 py-3 text-left text-xs uppercase tracking-wide text-slate-500">ID</th>
+                  <th className="px-6 py-3 text-left text-xs uppercase tracking-wide text-slate-500">Username</th>
+                  <th className="px-6 py-3 text-left text-xs uppercase tracking-wide text-slate-500">Full Name</th>
+                  <th className="px-6 py-3 text-left text-xs uppercase tracking-wide text-slate-500">Email</th>
+                  <th className="px-6 py-3 text-left text-xs uppercase tracking-wide text-slate-500">Date Added</th>
+                  <th className="px-6 py-3 text-left text-xs uppercase tracking-wide text-slate-500">Status</th>
+                  <th className="px-6 py-3 text-left text-xs uppercase tracking-wide text-slate-500">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
