@@ -1,0 +1,45 @@
+# Triggers redeploy on Render when you push to `staging`.
+# Course-style CI/CD: GitHub Actions → cloud deploy hooks (no Vercel in this project).
+#
+# Setup (once per repo):
+# 1. Render Dashboard → Web Service → Settings → Deploy Hook → copy URL → GitHub repo
+#    Settings → Secrets and variables → Actions → REPO secret RENDER_WEB_DEPLOY_HOOK
+# 2. Static Site → Settings → Deploy Hook → RENDER_STATIC_DEPLOY_HOOK
+# 3. Ensure both services watch branch `staging` (or triggers only refresh latest deploy —
+#    see Render docs).
+#
+# Optional: replicate with MAIN hooks on branch `main` in a copy of this file.
+
+name: Deploy staging → Render
+
+on:
+  push:
+    branches:
+      - staging
+
+concurrency:
+  group: deploy-staging-render
+  cancel-in-progress: false
+
+jobs:
+  deploy-backend:
+    name: Backend (Docker Web Service) → Render hook
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render backend deploy
+        env:
+          HOOK: ${{ secrets.RENDER_WEB_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then echo "RENDER_WEB_DEPLOY_HOOK secret not set; skipping"; exit 0; fi
+          curl -fsS -X POST "$HOOK"
+
+  deploy-frontend:
+    name: Frontend (Static Site) → Render hook
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render static site deploy
+        env:
+          HOOK: ${{ secrets.RENDER_STATIC_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then echo "RENDER_STATIC_DEPLOY_HOOK secret not set; skipping"; exit 0; fi
+          curl -fsS -X POST "$HOOK"
