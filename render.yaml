@@ -14,8 +14,8 @@ services:
     region: singapore
     plan: free
     branch: main
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     healthCheckPath: /api/health/
     envVars:
       - key: SECRET_KEY
