@@ -78,7 +78,7 @@ Install those only with pip from the backend folder (see section 3).
 --------------------------------------------------------------------------------
 
   A) Repo root — what package.json declares today
-    Folder: repository root (same level as this requirements.txt)
+    Folder: repository root (same level as LAPTOP-SETUP.txt)
 
     Steps:
       npm install
