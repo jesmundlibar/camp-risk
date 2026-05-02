@@ -25,6 +25,17 @@ export interface ApiUser {
   fullName: string;
 }
 
+function isValidApiUser(x: unknown): x is ApiUser {
+  if (!x || typeof x !== 'object') return false;
+  const o = x as Record<string, unknown>;
+  return (
+    typeof o.id === 'string' &&
+    typeof o.username === 'string' &&
+    (o.role === 'admin' || o.role === 'guard') &&
+    typeof o.fullName === 'string'
+  );
+}
+
 export async function apiLogin(
   username: string,
   password: string,
@@ -40,7 +51,12 @@ export async function apiLogin(
   if (!res.ok) {
     throw new Error(typeof body.error === 'string' ? body.error : 'Login failed');
   }
-  return body as ApiUser;
+  if (!isValidApiUser(body)) {
+    throw new Error(
+      'Could not reach the API. On Render, set VITE_API_URL to your backend base URL (for example https://your-api.onrender.com) in the static site build environment, rebuild, and redeploy.',
+    );
+  }
+  return body;
 }
 
 export async function apiLogout(): Promise<void> {
@@ -55,8 +71,12 @@ export async function apiLogout(): Promise<void> {
 export async function apiMe(): Promise<ApiUser | null> {
   const res = await fetch(apiUrl('/api/auth/me/'), { ...fetchDefaults });
   if (!res.ok) return null;
-  const data = (await res.json()) as { user: ApiUser | null };
-  return data.user ?? null;
+  const ct = res.headers.get('content-type') || '';
+  if (!ct.includes('application/json')) return null;
+  const data = (await res.json().catch(() => ({}))) as { user?: unknown };
+  const u = data.user ?? null;
+  if (!u) return null;
+  return isValidApiUser(u) ? u : null;
 }
 
 export interface ApiRiskAssessmentDetail {

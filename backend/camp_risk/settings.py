@@ -174,8 +174,16 @@ STORAGES = {
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Session cookies work with Vite dev proxy (same-site browser context).
-SESSION_COOKIE_SAMESITE = 'Lax'
+# Session: local dev uses Vite proxy (same-site). Production often splits static site + API
+# on different *.onrender.com hosts — browsers require SameSite=None + Secure for cookies on
+# cross-origin credentialed fetch().
+_session_samesite = os.environ.get('SESSION_COOKIE_SAMESITE', '').strip().lower()
+if _session_samesite in ('lax', 'strict', 'none'):
+    SESSION_COOKIE_SAMESITE = _session_samesite.capitalize()
+elif DEBUG:
+    SESSION_COOKIE_SAMESITE = 'Lax'
+else:
+    SESSION_COOKIE_SAMESITE = 'None'
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG

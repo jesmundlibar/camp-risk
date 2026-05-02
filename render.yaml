@@ -1,6 +1,7 @@
 # Render Blueprint: https://render.com/docs/infrastructure-as-code
 # New → Blueprint → connect repo. Edit `databaseName` / `name` to match your team.
-# After deploy: set CORS_ALLOWED_ORIGINS + CSRF_TRUSTED_ORIGINS to your Static Site https URL (comma-separated if several).
+# After deploy: set CORS_ALLOWED_ORIGINS + CSRF_TRUSTED_ORIGINS on the API to your Static Site https URL(s).
+# Static Site build: set VITE_API_URL to the API base URL (e.g. https://camp-risk-....onrender.com) so /api calls hit Django, not the SPA.
 
 databases:
   - name: camprisk-postgres
