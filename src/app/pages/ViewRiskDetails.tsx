@@ -137,17 +137,19 @@ export function ViewRiskDetails() {
                 disabled={pdfLoading}
                 onClick={() => {
                   setPdfLoading(true);
-                  try {
-                    if (pdfAction === 'download') {
-                      downloadAssessmentPdf(riskId);
-                    } else {
-                      openAssessmentPdf(riskId);
+                  void (async () => {
+                    try {
+                      if (pdfAction === 'download') {
+                        await downloadAssessmentPdf(riskId);
+                      } else {
+                        await openAssessmentPdf(riskId);
+                      }
+                    } catch (e) {
+                      alert(e instanceof Error ? e.message : 'Could not process PDF action');
+                    } finally {
+                      setPdfLoading(false);
                     }
-                  } catch (e) {
-                    alert(e instanceof Error ? e.message : 'Could not process PDF action');
-                  } finally {
-                    setPdfLoading(false);
-                  }
+                  })();
                 }}
                 className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-[var(--xu-blue)] text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >

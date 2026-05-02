@@ -6,6 +6,7 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
+from .bearer_auth import issue_auth_token
 from .models import UserProfile
 
 ADMIN_USERNAME = 'Admin'
@@ -41,16 +42,19 @@ def _ensure_fixed_admin_account() -> User:
     return admin_user
 
 
-def _user_payload(user: User) -> dict:
+def _user_payload(user: User, *, include_token: bool = False) -> dict:
     profile = getattr(user, 'profile', None)
     role = profile.role if profile else UserProfile.Role.GUARD
     full_name = user.get_full_name().strip() or user.username
-    return {
+    out = {
         'id': str(user.id),
         'username': user.username,
         'role': role,
         'fullName': full_name,
     }
+    if include_token:
+        out['authToken'] = issue_auth_token(user)
+    return out
 
 
 @csrf_exempt
@@ -93,7 +97,7 @@ def api_login(request):
                 status=403,
             )
     login(request, user)
-    return JsonResponse(_user_payload(user))
+    return JsonResponse(_user_payload(user, include_token=True))
 
 
 @csrf_exempt

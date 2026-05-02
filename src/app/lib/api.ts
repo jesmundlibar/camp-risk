@@ -2,6 +2,40 @@
  * API base: leave unset in dev so Vite proxies `/api` and `/media` to Django (127.0.0.1:8000).
  * Set `VITE_API_URL` when the frontend and API are on different hosts.
  */
+const API_TOKEN_KEY = 'camp_risk_api_token';
+
+export function clearApiToken(): void {
+  try {
+    sessionStorage.removeItem(API_TOKEN_KEY);
+  } catch {
+    /* private mode etc. */
+  }
+}
+
+function setApiToken(token: string): void {
+  try {
+    sessionStorage.setItem(API_TOKEN_KEY, token);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Session cookies plus Bearer token (needed when static site and API are on different hosts). */
+export function authFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers ?? {});
+  try {
+    const t = sessionStorage.getItem(API_TOKEN_KEY);
+    if (t) headers.set('Authorization', `Bearer ${t}`);
+  } catch {
+    /* ignore */
+  }
+  return fetch(input, {
+    credentials: 'include',
+    ...init,
+    headers,
+  });
+}
+
 const fetchDefaults: RequestInit = {
   credentials: 'include',
 };
@@ -56,20 +90,29 @@ export async function apiLogin(
       'Could not reach the API. On Render, set VITE_API_URL to your backend base URL (for example https://your-api.onrender.com) in the static site build environment, rebuild, and redeploy.',
     );
   }
-  return body;
+  const raw = body as Record<string, unknown>;
+  const token = raw.authToken;
+  if (typeof token !== 'string' || token.length === 0) {
+    throw new Error('Login succeeded but API did not return authToken — redeploy the backend.');
+  }
+  setApiToken(token);
+  return { id: raw.id as string, username: raw.username as string, role: raw.role as 'guard' | 'admin', fullName: raw.fullName as string };
 }
 
 export async function apiLogout(): Promise<void> {
-  await fetch(apiUrl('/api/auth/logout/'), {
-    ...fetchDefaults,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: '{}',
-  });
+  try {
+    await authFetch(apiUrl('/api/auth/logout/'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+  } finally {
+    clearApiToken();
+  }
 }
 
 export async function apiMe(): Promise<ApiUser | null> {
-  const res = await fetch(apiUrl('/api/auth/me/'), { ...fetchDefaults });
+  const res = await authFetch(apiUrl('/api/auth/me/'), {});
   if (!res.ok) return null;
   const ct = res.headers.get('content-type') || '';
   if (!ct.includes('application/json')) return null;
@@ -143,7 +186,7 @@ export async function fetchReports(params?: {
   if (params?.status) {
     url.searchParams.set('status', params.status);
   }
-  const res = await fetch(url.toString(), fetchDefaults);
+  const res = await authFetch(url.toString(), {});
   if (res.status === 401) {
     throw new Error('Session expired. Please sign in again.');
   }
@@ -156,7 +199,7 @@ export async function fetchReports(params?: {
 
 export async function fetchReport(reportId: string): Promise<ApiReport | null> {
   const path = `/api/reports/${encodeURIComponent(reportId)}/`;
-  const res = await fetch(apiUrl(path), fetchDefaults);
+  const res = await authFetch(apiUrl(path), {});
   if (res.status === 404) return null;
   if (res.status === 401) {
     throw new Error('Session expired. Please sign in again.');
@@ -168,8 +211,7 @@ export async function fetchReport(reportId: string): Promise<ApiReport | null> {
 }
 
 export async function submitIncidentReport(form: FormData): Promise<ApiReport> {
-  const res = await fetch(apiUrl('/api/reports/'), {
-    ...fetchDefaults,
+  const res = await authFetch(apiUrl('/api/reports/'), {
     method: 'POST',
     body: form,
   });
@@ -184,8 +226,7 @@ export async function submitIncidentReport(form: FormData): Promise<ApiReport> {
 /** Guard-only: revise a Pending report they submitted (multipart, same fields as create). */
 export async function updateGuardIncidentReport(reportId: string, form: FormData): Promise<ApiReport> {
   const path = `/api/reports/${encodeURIComponent(reportId)}/update/`;
-  const res = await fetch(apiUrl(path), {
-    ...fetchDefaults,
+  const res = await authFetch(apiUrl(path), {
     // POST required: Django only parses multipart into POST/FILES for POST, not PATCH.
     method: 'POST',
     body: form,
@@ -245,7 +286,7 @@ export interface ApiPersonnelRow {
 }
 
 export async function fetchPersonnel(): Promise<ApiPersonnelRow[]> {
-  const res = await fetch(apiUrl('/api/personnel/'), fetchDefaults);
+  const res = await authFetch(apiUrl('/api/personnel/'), {});
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(typeof body.error === 'string' ? body.error : 'Could not load personnel');
@@ -260,8 +301,7 @@ export async function createPersonnel(payload: {
   email: string;
   password: string;
 }): Promise<ApiPersonnelRow> {
-  const res = await fetch(apiUrl('/api/personnel/'), {
-    ...fetchDefaults,
+  const res = await authFetch(apiUrl('/api/personnel/'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -274,8 +314,7 @@ export async function createPersonnel(payload: {
 }
 
 export async function deletePersonnel(userId: string): Promise<void> {
-  const res = await fetch(apiUrl(`/api/personnel/${encodeURIComponent(userId)}/`), {
-    ...fetchDefaults,
+  const res = await authFetch(apiUrl(`/api/personnel/${encodeURIComponent(userId)}/`), {
     method: 'DELETE',
   });
   const body = await res.json().catch(() => ({}));
@@ -295,7 +334,7 @@ export async function fetchDashboardSummary(params?: {
   if (params?.endDate) {
     url.searchParams.set('end_date', params.endDate);
   }
-  const res = await fetch(url.toString(), fetchDefaults);
+  const res = await authFetch(url.toString(), {});
   if (res.status === 401 || res.status === 403) {
     throw new Error('You need an administrator session to load the dashboard summary.');
   }
@@ -317,8 +356,7 @@ export async function submitInformationRequest(
     urgency: string;
   },
 ): Promise<{ ok: boolean; id: number; report_id: string; message: string }> {
-  const res = await fetch(apiUrl(`/api/reports/${encodeURIComponent(reportId)}/request-info/`), {
-    ...fetchDefaults,
+  const res = await authFetch(apiUrl(`/api/reports/${encodeURIComponent(reportId)}/request-info/`), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -344,8 +382,7 @@ export async function submitRiskAssessment(
     mitigation_actions: Array<{ description: string; due_date: string }>;
   },
 ): Promise<{ ok: boolean; report_id: string; risk_score: number; risk_level: string; status_code: string }> {
-  const res = await fetch(apiUrl(`/api/reports/${encodeURIComponent(reportId)}/assessment/`), {
-    ...fetchDefaults,
+  const res = await authFetch(apiUrl(`/api/reports/${encodeURIComponent(reportId)}/assessment/`), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -358,19 +395,63 @@ export async function submitRiskAssessment(
   return body as { ok: boolean; report_id: string; risk_score: number; risk_level: string; status_code: string };
 }
 
+async function assessmentPdfBlobUrl(reportId: string): Promise<string> {
+  const res = await authFetch(apiUrl(`/api/reports/${encodeURIComponent(reportId)}/assessment-pdf/`));
+  if (!res.ok) {
+    throw new Error(`Could not load PDF (${res.status})`);
+  }
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}
+
+function tryHasStoredApiToken(): boolean {
+  try {
+    return !!sessionStorage.getItem(API_TOKEN_KEY);
+  } catch {
+    return false;
+  }
+}
+
 /** Open printable PDF endpoint in a new tab for browser preview/print. */
 export async function openAssessmentPdf(reportId: string): Promise<void> {
-  const previewUrl = assessmentPdfUrl(reportId);
+  let previewUrl = assessmentPdfUrl(reportId);
+  let blobUrlToRevoke: string | null = null;
+  if (tryHasStoredApiToken()) {
+    try {
+      blobUrlToRevoke = await assessmentPdfBlobUrl(reportId);
+      previewUrl = blobUrlToRevoke;
+    } catch {
+      previewUrl = assessmentPdfUrl(reportId);
+      blobUrlToRevoke = null;
+    }
+  }
   const preview = window.open(previewUrl, '_blank', 'noopener');
   if (preview) {
+    if (blobUrlToRevoke) window.setTimeout(() => URL.revokeObjectURL(blobUrlToRevoke), 60_000);
     return;
   }
-  // Fallback if popup is blocked.
   window.location.assign(previewUrl);
+  if (blobUrlToRevoke) window.setTimeout(() => URL.revokeObjectURL(blobUrlToRevoke), 60_000);
 }
 
 /** Download assessment PDF directly from endpoint. */
-export function downloadAssessmentPdf(reportId: string): void {
+export async function downloadAssessmentPdf(reportId: string): Promise<void> {
+  if (tryHasStoredApiToken()) {
+    try {
+      const blobUrl = await assessmentPdfBlobUrl(reportId);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = `${(reportId || 'report').replace(/[^\w.-]+/g, '_')}-risk-assessment.pdf`;
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+      return;
+    } catch {
+      /* fallback to cookie-based GET */
+    }
+  }
   const url = assessmentPdfUrl(reportId);
   const a = document.createElement('a');
   a.href = url;
@@ -382,11 +463,22 @@ export function downloadAssessmentPdf(reportId: string): void {
 }
 
 /** Open PDF and trigger browser print dialog. */
-export function printAssessmentPdf(reportId: string): void {
-  const url = assessmentPdfUrl(reportId);
+export async function printAssessmentPdf(reportId: string): Promise<void> {
+  let url = assessmentPdfUrl(reportId);
+  let revoke: string | null = null;
+  if (tryHasStoredApiToken()) {
+    try {
+      revoke = await assessmentPdfBlobUrl(reportId);
+      url = revoke;
+    } catch {
+      url = assessmentPdfUrl(reportId);
+      revoke = null;
+    }
+  }
   const win = window.open(url, '_blank', 'noopener');
   if (!win) {
     window.location.assign(url);
+    if (revoke) window.setTimeout(() => URL.revokeObjectURL(revoke), 60_000);
     return;
   }
   window.setTimeout(() => {
@@ -396,6 +488,7 @@ export function printAssessmentPdf(reportId: string): void {
     } catch {
       // Ignore if browser blocks automated print.
     }
+    if (revoke) window.setTimeout(() => URL.revokeObjectURL(revoke), 60_000);
   }, 900);
 }
 
@@ -420,8 +513,7 @@ export async function extendMitigationDeadline(
     throw new Error('Invalid action ID. Expected format like RPT-12-A1.');
   }
   const path = `/api/reports/${encodeURIComponent(parsed.reportId)}/extend-deadline/`;
-  const res = await fetch(apiUrl(path), {
-    ...fetchDefaults,
+  const res = await authFetch(apiUrl(path), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -443,8 +535,7 @@ export async function completeMitigationAction(
   actionRef: string,
 ): Promise<{ ok: boolean; action_ref: string; message: string; status_code: string }> {
   const path = `/api/mitigation/actions/${encodeURIComponent(actionRef)}/complete/`;
-  const res = await fetch(apiUrl(path), {
-    ...fetchDefaults,
+  const res = await authFetch(apiUrl(path), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: '{}',
@@ -466,8 +557,7 @@ export async function updateMitigationTracking(
     notes: string;
   },
 ): Promise<{ ok: boolean; report_id: string; message: string; status_code: string }> {
-  const res = await fetch(apiUrl(`/api/reports/${encodeURIComponent(reportId)}/mitigation/`), {
-    ...fetchDefaults,
+  const res = await authFetch(apiUrl(`/api/reports/${encodeURIComponent(reportId)}/mitigation/`), {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
