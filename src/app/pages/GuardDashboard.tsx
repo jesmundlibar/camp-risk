@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router';
 import { useAuth } from '../context/AuthContext';
-import { Clock, MapPin, FileText, Shield, X } from 'lucide-react';
-import { xuLogo } from '../constants/xuLogo';
+import { Clock, MapPin, FileText, X } from 'lucide-react';
+import { AppShellHeader } from '../components/AppShellHeader';
 import { NotificationBell } from '../components/NotificationBell';
 import { ensureMediaSrc, fetchReport, fetchReports, type ApiReport } from '../lib/api';
 
@@ -120,33 +120,22 @@ export function GuardDashboard() {
   const recentSlice = reports.slice(0, 3);
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="bg-white shadow-sm border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <img src={xuLogo} alt="XU Logo" className="h-12" />
-            <div>
-              <h1 className="text-xl text-[var(--xu-blue)]">CAMP-RISK</h1>
-              <p className="text-sm text-slate-600">Risk Management System</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
+    <div className="app-page">
+      <AppShellHeader
+        actions={
+          <>
             <NotificationBell role="guard" />
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="px-4 py-2 text-sm border border-slate-300 rounded-md hover:bg-slate-100 transition-colors"
-            >
+            <button type="button" onClick={handleLogout} className="app-btn-outline">
               Logout
             </button>
-          </div>
-        </div>
-      </header>
+          </>
+        }
+      />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-8">
-          <h2 className="text-2xl sm:text-3xl mb-2">Welcome, {user?.fullName}</h2>
-          <p className="text-slate-600">Security Guard Dashboard</p>
+      <main className="app-main">
+        <div className="mb-6 sm:mb-8">
+          <h2 className="app-page-title">Welcome, {user?.fullName}</h2>
+          <p className="app-page-subtitle mt-1.5">Security guard workspace — file incidents and review your history.</p>
         </div>
 
         {loadError && (
@@ -168,21 +157,21 @@ export function GuardDashboard() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-8">
+        <div className="mb-8 grid grid-cols-1 gap-5 xl:grid-cols-2">
           <div
             role="button"
             tabIndex={0}
             onClick={() => navigate('/guard/report')}
             onKeyDown={(e) => e.key === 'Enter' && navigate('/guard/report')}
-            className="bg-gradient-to-br from-[var(--xu-blue)] to-blue-700 text-white rounded-lg shadow-lg p-8 lg:p-10 cursor-pointer hover:shadow-xl transition-all hover:scale-[1.02]"
+            className="cursor-pointer rounded-xl border border-blue-900/20 bg-gradient-to-br from-[var(--xu-blue)] via-blue-800 to-blue-950 p-7 text-white shadow-md transition-shadow duration-200 hover:shadow-lg lg:p-9"
           >
-            <FileText className="h-16 w-16 lg:h-20 lg:w-20 mb-4 opacity-90" />
-            <h3 className="text-2xl lg:text-3xl mb-2">SUBMIT INCIDENT REPORT</h3>
-            <p className="text-blue-100 text-lg">Click Here</p>
+            <FileText className="mb-4 h-14 w-14 opacity-90 lg:h-16 lg:w-16" aria-hidden />
+            <h3 className="mb-2 text-xl font-semibold tracking-tight lg:text-2xl">Submit incident report</h3>
+            <p className="text-sm font-medium text-blue-100/95 lg:text-base">Open the reporting form</p>
           </div>
 
-          <div className="bg-white rounded-lg shadow-lg p-6 lg:p-8">
-            <h3 className="text-xl lg:text-2xl mb-4 text-slate-800">Recent Reports</h3>
+          <div className="app-card p-6 lg:p-7">
+            <h3 className="mb-4 text-base font-semibold tracking-tight text-slate-900 lg:text-lg">Recent reports</h3>
             {loading ? (
               <p className="text-slate-500 text-sm">Loading…</p>
             ) : recentSlice.length === 0 ? (
@@ -192,7 +181,7 @@ export function GuardDashboard() {
                 {recentSlice.map((report) => (
                   <div
                     key={report.id}
-                    className="flex items-start justify-between p-4 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors"
+                    className="flex items-start justify-between rounded-lg border border-slate-100 bg-slate-50/80 p-4 transition-colors hover:border-slate-200 hover:bg-slate-50"
                   >
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2">
@@ -223,39 +212,39 @@ export function GuardDashboard() {
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-200">
-            <h3 className="text-xl text-slate-800">My Report History</h3>
+        <div className="app-card overflow-hidden">
+          <div className="border-b border-slate-100 px-4 py-4 sm:px-6">
+            <h3 className="text-base font-semibold tracking-tight text-slate-900 sm:text-lg">My report history</h3>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-slate-50 border-b border-slate-200">
+              <thead className="app-table-head">
                 <tr>
-                  <th className="px-6 py-3 text-left text-sm text-slate-600">Date</th>
-                  <th className="px-6 py-3 text-left text-sm text-slate-600">Hazard</th>
-                  <th className="px-6 py-3 text-left text-sm text-slate-600">Status</th>
-                  <th className="px-6 py-3 text-left text-sm text-slate-600">Action</th>
+                  <th className="px-3 sm:px-6 py-3 text-left text-sm text-slate-600">Date</th>
+                  <th className="px-3 sm:px-6 py-3 text-left text-sm text-slate-600">Hazard</th>
+                  <th className="px-3 sm:px-6 py-3 text-left text-sm text-slate-600">Status</th>
+                  <th className="px-3 sm:px-6 py-3 text-left text-sm text-slate-600">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
                 {loading ? (
                   <tr>
-                    <td colSpan={4} className="px-6 py-8 text-center text-slate-500 text-sm">
+                    <td colSpan={4} className="px-3 sm:px-6 py-8 text-center text-slate-500 text-sm">
                       Loading…
                     </td>
                   </tr>
                 ) : reports.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="px-6 py-8 text-center text-slate-500 text-sm">
+                    <td colSpan={4} className="px-3 sm:px-6 py-8 text-center text-slate-500 text-sm">
                       No report history.
                     </td>
                   </tr>
                 ) : (
                   reports.map((report) => (
                     <tr key={report.id} className="hover:bg-slate-50">
-                      <td className="px-6 py-4 text-sm text-slate-800">{report.date}</td>
-                      <td className="px-6 py-4 text-sm text-slate-800">{report.hazard}</td>
-                      <td className="px-6 py-4">
+                      <td className="px-3 sm:px-6 py-4 text-sm text-slate-800">{report.date}</td>
+                      <td className="px-3 sm:px-6 py-4 text-sm text-slate-800">{report.hazard}</td>
+                      <td className="px-3 sm:px-6 py-4">
                         <div className="flex flex-col gap-1 items-start">
                           <span
                             className={`inline-flex px-2 py-1 text-xs rounded-full ${
@@ -277,12 +266,12 @@ export function GuardDashboard() {
                           ) : null}
                         </div>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-3 sm:px-6 py-4">
                         <div className="flex flex-wrap items-center gap-3">
                           <button
                             type="button"
                             onClick={() => setSelectedReport(report)}
-                            className="text-[var(--xu-blue)] text-sm hover:underline"
+                            className="min-h-10 px-2 py-2 text-[var(--xu-blue)] text-sm hover:underline touch-manipulation inline-flex items-center"
                           >
                             View
                           </button>
@@ -298,21 +287,21 @@ export function GuardDashboard() {
       </main>
 
       {selectedReport && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto overscroll-contain bg-black/50 p-3 sm:p-4">
+          <div className="my-auto flex min-h-0 w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-xl shadow-slate-900/10 max-h-[min(92dvh,40rem)]">
+            <div className="sticky top-0 z-10 flex shrink-0 flex-col gap-2 border-b border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
               <h3 className="text-xl text-slate-800">Report Details</h3>
               <button
                 type="button"
                 onClick={() => setSelectedReport(null)}
-                className="text-slate-400 hover:text-slate-600 transition-colors"
+                className="self-end text-slate-400 hover:text-slate-600 transition-colors touch-manipulation min-h-10 min-w-10 inline-flex items-center justify-center rounded-md sm:self-center"
               >
                 <X className="h-6 w-6" />
               </button>
             </div>
 
-            <div className="p-6 space-y-6">
-              <div className="flex items-center justify-between">
+            <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-sm text-slate-600">Report ID</p>
                   <p className="text-lg text-[var(--xu-blue)]">{selectedReport.id}</p>
@@ -332,7 +321,7 @@ export function GuardDashboard() {
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <p className="text-sm text-slate-600 mb-1">Date</p>
                   <p className="text-slate-800">{selectedReport.date}</p>
@@ -382,7 +371,7 @@ export function GuardDashboard() {
 
               <div className="bg-slate-50 rounded-lg p-4 space-y-3">
                 <p className="text-sm text-slate-600">Location Details</p>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <p className="text-xs text-slate-500">Building</p>
                     <p className="text-slate-800">{selectedReport.building}</p>
@@ -458,7 +447,7 @@ export function GuardDashboard() {
               ) : null}
             </div>
 
-            <div className="border-t border-slate-200 px-6 py-4 flex flex-wrap items-center justify-end gap-3">
+            <div className="flex flex-col-reverse gap-2 border-t border-slate-200 px-4 py-4 sm:flex-row sm:flex-wrap sm:justify-end sm:px-6 sm:gap-3">
               {selectedReport.statusCode === 'pending' ? (
                 <button
                   type="button"
@@ -467,7 +456,7 @@ export function GuardDashboard() {
                     setSelectedReport(null);
                     navigate(`/guard/report/edit/${encodeURIComponent(id)}`);
                   }}
-                  className="px-4 py-2 bg-[var(--xu-blue)] text-white rounded-md hover:bg-blue-700 transition-colors"
+                  className="min-h-11 w-full px-4 py-2.5 bg-[var(--xu-blue)] text-white rounded-md hover:bg-blue-700 transition-colors touch-manipulation sm:w-auto"
                 >
                   Update report
                 </button>
@@ -475,7 +464,7 @@ export function GuardDashboard() {
               <button
                 type="button"
                 onClick={() => setSelectedReport(null)}
-                className="px-4 py-2 bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200 transition-colors"
+                className="min-h-11 w-full px-4 py-2.5 bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200 transition-colors touch-manipulation sm:w-auto"
               >
                 Close
               </button>

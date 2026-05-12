@@ -10,6 +10,8 @@ services:
       - ./backend:/app
     environment:
       - DEBUG=True
+      # Include your Droplet IP or domain; use * only for quick staging (not production)
+      - ALLOWED_HOSTS=localhost,127.0.0.1,.onrender.com,*
       - DB_HOST=db
       - DB_NAME=camp_risk_db
       - DB_USER=camp_risk_user

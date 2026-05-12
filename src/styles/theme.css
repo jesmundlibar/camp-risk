@@ -138,6 +138,13 @@
 
   html {
     font-size: var(--font-size);
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  #root {
+    min-height: 100dvh;
+    overflow-x: clip;
   }
 
   h1 {
@@ -180,5 +187,77 @@
     font-size: var(--text-base);
     font-weight: var(--font-weight-normal);
     line-height: 1.5;
+  }
+}
+
+@layer components {
+  /** App shell: soft neutral canvas aligned with XU blue / slate accents */
+  .app-page {
+    @apply min-h-screen antialiased text-slate-900;
+    background: linear-gradient(180deg, rgb(241 245 249) 0%, rgb(248 250 252) 40%, rgb(236 242 249) 100%);
+  }
+
+  .app-main {
+    @apply mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8;
+  }
+
+  .app-main-md {
+    @apply mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8;
+  }
+
+  .app-main-wide {
+    @apply mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8;
+  }
+
+  .app-main-narrow {
+    @apply mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8;
+  }
+
+  .app-card {
+    @apply rounded-xl border border-slate-200/80 bg-white shadow-sm;
+  }
+
+  .app-card-interactive {
+    @apply cursor-pointer rounded-xl border border-slate-200/70 bg-white shadow-sm transition-all duration-200 hover:border-slate-300/90 hover:shadow-md;
+  }
+
+  .app-form-panel {
+    @apply rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-7 lg:p-9;
+  }
+
+  .app-btn-primary {
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-[var(--xu-blue)] px-3 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--xu-blue)] disabled:cursor-not-allowed disabled:opacity-50 sm:px-4 touch-manipulation;
+  }
+
+  .app-btn-primary-soft {
+    @apply inline-flex min-h-9 items-center justify-center gap-2 rounded-md border border-[var(--xu-blue)] bg-white px-3 py-1.5 text-sm font-medium text-[var(--xu-blue)] shadow-sm transition-colors hover:border-blue-800 hover:bg-blue-50/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--xu-blue)] disabled:cursor-not-allowed disabled:opacity-50 touch-manipulation;
+  }
+
+  .app-btn-outline {
+    @apply inline-flex min-h-10 items-center justify-center rounded-lg border border-slate-300/90 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-slate-400 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 disabled:cursor-not-allowed disabled:opacity-50 sm:px-4 touch-manipulation;
+  }
+
+  .app-btn-muted {
+    @apply inline-flex min-h-10 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-800 shadow-sm transition-colors hover:bg-slate-100 sm:px-4 touch-manipulation;
+  }
+
+  .app-btn-dark {
+    @apply inline-flex min-h-10 items-center justify-center rounded-lg bg-slate-800 px-3 py-2 text-xs font-medium text-white shadow-sm transition-colors hover:bg-slate-900 sm:text-sm sm:px-4 touch-manipulation;
+  }
+
+  .app-btn-sheet {
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-emerald-700/25 bg-emerald-50/80 px-4 py-2 text-sm font-medium text-emerald-950 shadow-sm transition-colors hover:border-emerald-700/40 hover:bg-emerald-100/90 disabled:cursor-not-allowed disabled:opacity-45 touch-manipulation;
+  }
+
+  .app-table-head {
+    @apply border-b border-slate-200/90 bg-slate-50/90;
+  }
+
+  .app-page-title {
+    @apply text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl;
+  }
+
+  .app-page-subtitle {
+    @apply text-sm text-slate-500 sm:text-[15px];
   }
 }

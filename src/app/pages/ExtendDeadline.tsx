@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 import { ArrowLeft, Save } from 'lucide-react';
-import { xuLogo } from '../constants/xuLogo';
+import { AppShellHeader } from '../components/AppShellHeader';
 import { extendMitigationDeadline, fetchReport, parseMitigationActionRef, type ApiReport } from '../lib/api';
 
 export function ExtendDeadline() {
@@ -99,48 +99,33 @@ export function ExtendDeadline() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="bg-white shadow-sm border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <img src={xuLogo} alt="XU Logo" className="h-12" />
-            <div>
-              <h1 className="text-xl text-[var(--xu-blue)]">CAMP-RISK</h1>
-              <p className="text-sm text-slate-600">Risk Management System</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <button
-              type="button"
-              onClick={() => navigate('/admin/dashboard')}
-              className="px-4 py-2 text-sm border border-slate-300 rounded-md hover:bg-slate-100 transition-colors"
-            >
+    <div className="app-page">
+      <AppShellHeader
+        actions={
+          <>
+            <button type="button" onClick={() => navigate('/admin/dashboard')} className="app-btn-outline">
               Back to Dashboard
             </button>
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="px-4 py-2 text-sm border border-slate-300 rounded-md hover:bg-slate-100 transition-colors"
-            >
+            <button type="button" onClick={handleLogout} className="app-btn-outline">
               Logout
             </button>
-          </div>
-        </div>
-      </header>
+          </>
+        }
+      />
 
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="app-main-md">
         <button
           type="button"
           onClick={() => navigate(-1)}
-          className="flex items-center gap-2 text-[var(--xu-blue)] mb-6 hover:underline"
+          className="mb-5 flex items-center gap-2 text-sm font-medium text-[var(--xu-blue)] hover:underline touch-manipulation"
         >
-          <ArrowLeft className="h-4 w-4" />
+          <ArrowLeft className="h-4 w-4 shrink-0" aria-hidden />
           Back
         </button>
 
         <div className="mb-6">
-          <h2 className="text-2xl sm:text-3xl mb-2">Extend Deadline</h2>
-          <p className="text-slate-600">
+          <h2 className="app-page-title">Extend deadline</h2>
+          <p className="app-page-subtitle mt-1.5">
             Action ID: {actionId ?? '—'}
             {parsed ? ` · Report ${parsed.reportId}, mitigation #${parsed.index1}` : null}
           </p>
@@ -164,7 +149,7 @@ export function ExtendDeadline() {
           </div>
         ) : null}
 
-        <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-lg p-6 space-y-6">
+        <form onSubmit={handleSubmit} className="app-card space-y-6 p-6">
           <div>
             <label className="block text-sm text-slate-700 mb-2">Current Due Date</label>
             <input

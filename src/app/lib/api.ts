@@ -298,11 +298,18 @@ export interface MitigationTracking {
   overdue_pct: number;
 }
 
+export interface GuardReportTallyRow {
+  submitted_by_user_id: string;
+  guard_name: string;
+  report_count: number;
+}
+
 export interface DashboardSummary {
   pending_count: number;
   open_risks_count: number;
   overdue_actions_count: number;
   mitigation_tracking?: MitigationTracking;
+  guard_report_tally?: GuardReportTallyRow[];
   open_risks: Array<{
     id: string;
     hazard: string;
@@ -330,6 +337,10 @@ export interface ApiPersonnelRow {
   username: string;
   fullName: string;
   email: string;
+  /** Bullet mask for the password column (length matches stored copy when present). */
+  passwordDisplay?: string;
+  /** Last password set via Manage Personnel (admin API only); empty for older accounts until next save. */
+  passwordPlain?: string;
   dateAdded: string;
   status: 'Active' | 'Inactive';
 }
@@ -370,6 +381,102 @@ export async function deletePersonnel(userId: string): Promise<void> {
   if (!res.ok) {
     throw new Error(apiErrorHint(res, body, 'Could not delete personnel'));
   }
+}
+
+/** Update guard profile; server requires a new password (8+ chars) whenever profile fields are updated. */
+export async function updatePersonnel(
+  userId: string,
+  payload: { username: string; fullName: string; email: string; password: string },
+): Promise<ApiPersonnelRow> {
+  const body: Record<string, string> = {
+    username: payload.username.trim(),
+    fullName: payload.fullName.trim(),
+    email: payload.email.trim(),
+    password: payload.password.trim(),
+  };
+  const res = await authFetch(apiUrl(`/api/personnel/${encodeURIComponent(userId)}/`), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const resBody = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok) {
+    throw new Error(apiErrorHint(res, resBody, 'Could not update personnel'));
+  }
+  return resBody as ApiPersonnelRow;
+}
+
+/** Disable or re-enable a guard account (preserves incident history; they cannot sign in while disabled). */
+export async function setPersonnelActive(userId: string, active: boolean): Promise<ApiPersonnelRow> {
+  const res = await authFetch(apiUrl(`/api/personnel/${encodeURIComponent(userId)}/`), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ active }),
+  });
+  const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok) {
+    throw new Error(apiErrorHint(res, body, 'Could not update personnel status'));
+  }
+  return body as ApiPersonnelRow;
+}
+
+export interface GoogleSheetsBackupInfo {
+  backup_enabled: boolean;
+  configured: boolean;
+  view_url: string | null;
+}
+
+/** Admin: URL to open the backup Google Sheet (from API env, or Vite env if API is not configured). */
+export async function fetchGoogleSheetsBackupInfo(): Promise<GoogleSheetsBackupInfo> {
+  const viteBrowser = (import.meta.env.VITE_GOOGLE_SHEETS_BROWSER_URL as string | undefined)?.trim();
+  const viteId = (import.meta.env.VITE_GOOGLE_SHEETS_SPREADSHEET_ID as string | undefined)?.trim();
+  const clientFallback = (): GoogleSheetsBackupInfo | null => {
+    if (viteBrowser) {
+      return { backup_enabled: false, configured: true, view_url: viteBrowser };
+    }
+    if (viteId) {
+      return {
+        backup_enabled: false,
+        configured: true,
+        view_url: `https://docs.google.com/spreadsheets/d/${viteId}/edit`,
+      };
+    }
+    return null;
+  };
+
+  let res: Response;
+  try {
+    res = await authFetch(apiUrl('/api/admin/google-sheets-backup/'), {});
+  } catch {
+    const fb = clientFallback();
+    if (fb) return fb;
+    throw new Error('Could not reach the API to load backup spreadsheet settings.');
+  }
+
+  const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (res.status === 401 || res.status === 403) {
+    throw new Error('Administrator session required to load backup spreadsheet settings.');
+  }
+  if (!res.ok) {
+    const fb = clientFallback();
+    if (fb) return fb;
+    throw new Error(typeof body.error === 'string' ? body.error : 'Could not load backup spreadsheet info');
+  }
+
+  const primary: GoogleSheetsBackupInfo = {
+    backup_enabled: body.backup_enabled === true,
+    configured: body.configured === true,
+    view_url: typeof body.view_url === 'string' && body.view_url.length > 0 ? body.view_url : null,
+  };
+  const fb = clientFallback();
+  if (!primary.configured && fb) {
+    return {
+      backup_enabled: primary.backup_enabled,
+      configured: true,
+      view_url: fb.view_url,
+    };
+  }
+  return primary;
 }
 
 export async function fetchDashboardSummary(params?: {

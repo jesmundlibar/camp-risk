@@ -13,10 +13,50 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 from pathlib import Path
 import os
 
-SECRET_KEY = os.environ.get('SECRET_KEY', 'change-me-in-production')
-
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+
+def _load_env_file(path: Path) -> None:
+    """Load KEY=VALUE lines into os.environ if not already set (same idea as python-dotenv)."""
+    if not path.is_file():
+        return
+    try:
+        raw = path.read_text(encoding='utf-8-sig')
+    except OSError:
+        return
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        if line.startswith('export '):
+            line = line[7:].strip()
+        if '=' not in line:
+            continue
+        key, _, val = line.partition('=')
+        key = key.strip()
+        if not key or key.startswith('#'):
+            continue
+        val = val.strip().strip('"').strip("'")
+        if key not in os.environ:
+            os.environ[key] = val
+
+
+# Local secrets / overrides (not committed). Works even if python-dotenv is not installed.
+_load_env_file(BASE_DIR / '.env')
+_load_env_file(BASE_DIR / 'local.env')
+_load_env_file(BASE_DIR.parent / '.env')
+
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(BASE_DIR / '.env')
+    load_dotenv(BASE_DIR / 'local.env')
+    load_dotenv(BASE_DIR.parent / '.env')
+except ImportError:
+    pass
+
+SECRET_KEY = os.environ.get('SECRET_KEY', 'change-me-in-production')
 
 
 # Quick-start development settings - unsuitable for production

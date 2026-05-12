@@ -56,12 +56,12 @@ export function NotificationBell({ role }: { role: Role }) {
 
   useEffect(() => {
     if (!open) return;
-    const onDoc = (e: MouseEvent) => {
+    const onDoc = (e: PointerEvent) => {
       const el = panelRef.current;
       if (el && !el.contains(e.target as Node)) setOpen(false);
     };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
+    document.addEventListener('pointerdown', onDoc);
+    return () => document.removeEventListener('pointerdown', onDoc);
   }, [open]);
 
   const onItemClick = async (n: ApiNotificationRow) => {
@@ -76,14 +76,14 @@ export function NotificationBell({ role }: { role: Role }) {
   };
 
   return (
-    <div className="relative" ref={panelRef}>
+    <div className="relative touch-manipulation" ref={panelRef}>
       <button
         type="button"
         onClick={() => {
           setOpen((v) => !v);
           void load();
         }}
-        className="relative p-2 rounded-md border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors"
+        className="relative inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border border-slate-300 p-2 text-slate-700 transition-colors hover:bg-slate-100 touch-manipulation"
         aria-expanded={open}
         aria-label="Notifications"
       >
@@ -96,7 +96,7 @@ export function NotificationBell({ role }: { role: Role }) {
       </button>
 
       {open ? (
-        <div className="absolute right-0 mt-2 w-[min(100vw-2rem,22rem)] max-h-[min(70vh,24rem)] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg z-50 flex flex-col">
+        <div className="absolute right-0 z-50 mt-2 w-[min(100vw-2rem,22rem)] max-h-[min(70dvh,24rem)] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg flex flex-col">
           <div className="flex items-center justify-between px-3 py-2 border-b border-slate-100 bg-slate-50">
             <span className="text-sm font-medium text-slate-800">Notifications</span>
             <button
@@ -112,7 +112,7 @@ export function NotificationBell({ role }: { role: Role }) {
                   }
                 })();
               }}
-              className="text-xs text-[var(--xu-blue)] hover:underline disabled:opacity-40 disabled:no-underline"
+              className="min-h-10 px-2 py-2 text-xs text-[var(--xu-blue)] hover:underline disabled:opacity-40 disabled:no-underline touch-manipulation rounded-md"
             >
               Mark all read
             </button>

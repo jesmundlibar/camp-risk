@@ -8,8 +8,8 @@ function AuthBootstrapGuard() {
   // Block route rendering until session check completes to avoid protected-page flicker.
   if (!authReady) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-600">
-        Loading...
+      <div className="app-page flex items-center justify-center text-sm text-slate-500">
+        Loading…
       </div>
     );
   }

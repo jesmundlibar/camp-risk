@@ -319,6 +319,7 @@ def report_guard_update(request, report_id: str):
     specific_location = (request.POST.get('specific_location') or '').strip()
     description = (request.POST.get('description') or '').strip()
     photo = request.FILES.get('photo')
+    remove_photo = (request.POST.get('remove_photo') or '').strip().lower() in ('1', 'true', 'yes', 'on')
 
     if not building or not floor or not room:
         return JsonResponse({'error': 'building, floor, and room are required'}, status=400)
@@ -335,7 +336,13 @@ def report_guard_update(request, report_id: str):
     report.specific_location = specific_location
     report.description = description
     report.priority = _priority_from_hazards(hazard_types)
-    if photo:
+    if remove_photo:
+        if report.photo:
+            report.photo.delete(save=False)
+        report.photo = None
+    elif photo:
+        if report.photo:
+            report.photo.delete(save=False)
         report.photo = photo
     report.save()
     _append_history(
@@ -1206,6 +1213,20 @@ def dashboard_summary(request):
         closed_reports_qs=closed_reports,
     )
 
+    guard_tally_qs = (
+        base_reports.values('submitted_by_user_id', 'submitted_by_name')
+        .annotate(report_count=Count('id'))
+        .order_by('-report_count')[:50]
+    )
+    guard_report_tally = [
+        {
+            'submitted_by_user_id': row['submitted_by_user_id'],
+            'guard_name': row['submitted_by_name'] or '—',
+            'report_count': row['report_count'],
+        }
+        for row in guard_tally_qs
+    ]
+
     return JsonResponse(
         {
             'pending_count': pending_count,
@@ -1217,6 +1238,7 @@ def dashboard_summary(request):
             'hazard_frequency': hazard_frequency_list,
             'top_risk_types': top_risk_types_list,
             'mitigation_tracking': mitigation_tracking,
+            'guard_report_tally': guard_report_tally,
         }
     )
 
@@ -1288,6 +1310,14 @@ def _build_assessment_pdf_report(report: IncidentReport, ra: RiskAssessment) -> 
     )
     body = ParagraphStyle(name='CampBody', parent=styles['Normal'], fontSize=10, leading=13)
     tbl_cell = ParagraphStyle(name='CampTblCell', parent=styles['Normal'], fontSize=8, leading=10)
+    hdr_tbl = ParagraphStyle(
+        name='CampTblHdrCell',
+        parent=tbl_cell,
+        fontName='Helvetica-Bold',
+        textColor=colors.white,
+        fontSize=9,
+        leading=11,
+    )
 
     story: list = []
     story.append(Paragraph('CAMP-RISK', title_style))
@@ -1296,20 +1326,48 @@ def _build_assessment_pdf_report(report: IncidentReport, ra: RiskAssessment) -> 
     story.append(_pdf_p(f'Generated: {gen}', sub_style))
     story.append(Spacer(1, 0.12 * inch))
 
-    story.append(Paragraph('1. Incident', h2))
-    story.append(_pdf_p(f'Report ID: {report.public_id()}', body))
-    story.append(_pdf_p(f'Status: {report.get_status_display()}', body))
-    story.append(_pdf_p(f'Hazard summary: {report.hazard_summary()}', body))
     hz = ', '.join(str(h) for h in (report.hazard_types or []) if str(h).strip())
-    story.append(_pdf_p(f'Hazard types recorded: {hz or "—"}', body))
-    if report.other_hazard:
-        story.append(_pdf_p(f'Other hazard detail: {report.other_hazard}', body))
-    story.append(_pdf_p(f'Location: {report.location_line()}', body))
-    story.append(_pdf_p(f'Reported by: {report.submitted_by_name}', body))
     created = timezone.localtime(report.created_at)
-    story.append(_pdf_p(f'Report submitted: {created.strftime("%Y-%m-%d %I:%M %p")}', body))
-    story.append(_pdf_p(f'Incident description:\n{report.description or "—"}', body))
-    story.append(Spacer(1, 0.08 * inch))
+
+    story.append(Paragraph('1. Incident summary', h2))
+    inc_rows = [
+        [Paragraph('Field', hdr_tbl), Paragraph('Details', hdr_tbl)],
+        [_pdf_p('Report ID', tbl_cell), _pdf_p(report.public_id(), tbl_cell)],
+        [_pdf_p('Status', tbl_cell), _pdf_p(report.get_status_display(), tbl_cell)],
+        [_pdf_p('Hazard summary', tbl_cell), _pdf_p(report.hazard_summary(), tbl_cell)],
+        [_pdf_p('Hazard types', tbl_cell), _pdf_p(hz or '—', tbl_cell)],
+    ]
+    if report.other_hazard:
+        inc_rows.append([_pdf_p('Other hazard', tbl_cell), _pdf_p(report.other_hazard, tbl_cell)])
+    inc_rows.extend(
+        [
+            [_pdf_p('Location', tbl_cell), _pdf_p(report.location_line(), tbl_cell)],
+            [_pdf_p('Reported by', tbl_cell), _pdf_p(report.submitted_by_name, tbl_cell)],
+            [_pdf_p('Submitted (local)', tbl_cell), _pdf_p(created.strftime('%Y-%m-%d %I:%M %p'), tbl_cell)],
+            [_pdf_p('Photo attached', tbl_cell), _pdf_p('Yes' if report.photo else 'No', tbl_cell)],
+            [_pdf_p('Description', tbl_cell), _pdf_p(report.description or '—', tbl_cell)],
+        ]
+    )
+    t_inc = Table(inc_rows, colWidths=[1.35 * inch, 5.0 * inch])
+    t_inc.setStyle(
+        TableStyle(
+            [
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e40af')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 9),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e1')),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8fafc')]),
+                ('LEFTPADDING', (0, 0), (-1, -1), 5),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+                ('TOPPADDING', (0, 0), (-1, -1), 5),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+            ]
+        )
+    )
+    story.append(t_inc)
+    story.append(Spacer(1, 0.1 * inch))
 
     cls = ra.risk_classification or ''
     cls_label = _PDF_CLASS_LABELS.get(cls, cls or '—')
@@ -1338,15 +1396,99 @@ def _build_assessment_pdf_report(report: IncidentReport, ra: RiskAssessment) -> 
     story.append(_pdf_p(f'Likelihood: {li_txt}', body))
     story.append(_pdf_p(f'Severity: {se_txt}', body))
     story.append(_pdf_p(f'Risk score: {ra.risk_score}   Level: {ra.risk_level}', body))
+    breakdown = ra.hazard_risk_breakdown or []
+    if isinstance(breakdown, list) and breakdown:
+        br_rows = [
+            [
+                Paragraph('Hazard', hdr_tbl),
+                Paragraph('Specific risk', hdr_tbl),
+                Paragraph('Affected area', hdr_tbl),
+                Paragraph('L', hdr_tbl),
+                Paragraph('S', hdr_tbl),
+                Paragraph('L×S', hdr_tbl),
+            ]
+        ]
+        for entry in breakdown:
+            if not isinstance(entry, dict):
+                continue
+            h = str(entry.get('hazard') or '')
+            spec = str(entry.get('specific_risk') or '')
+            aff = str(entry.get('affected_area') or '')
+            try:
+                hli = int(entry.get('likelihood'))
+                hse = int(entry.get('severity'))
+                prod = hli * hse
+                hli_s, hse_s, prod_s = str(hli), str(hse), str(prod)
+            except (TypeError, ValueError):
+                hli_s, hse_s, prod_s = '—', '—', '—'
+            br_rows.append(
+                [
+                    _pdf_p(h, tbl_cell),
+                    _pdf_p(spec, tbl_cell),
+                    _pdf_p(aff, tbl_cell),
+                    _pdf_p(hli_s, tbl_cell),
+                    _pdf_p(hse_s, tbl_cell),
+                    _pdf_p(prod_s, tbl_cell),
+                ]
+            )
+        if len(br_rows) > 1:
+            story.append(Spacer(1, 0.05 * inch))
+            story.append(_pdf_p('Per-hazard breakdown (as recorded):', body))
+            story.append(Spacer(1, 0.04 * inch))
+            t_br = Table(
+                br_rows,
+                colWidths=[1.05 * inch, 1.85 * inch, 1.2 * inch, 0.38 * inch, 0.38 * inch, 0.52 * inch],
+            )
+            t_br.setStyle(
+                TableStyle(
+                    [
+                        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e40af')),
+                        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                        ('FONTSIZE', (0, 0), (-1, 0), 8),
+                        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e1')),
+                        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8fafc')]),
+                        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+                        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+                        ('TOPPADDING', (0, 0), (-1, -1), 4),
+                        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+                    ]
+                )
+            )
+            story.append(t_br)
+            story.append(Spacer(1, 0.06 * inch))
     story.append(_pdf_p(f'Residual risk (after controls): {ra.residual_risk or "—"}', body))
     story.append(_pdf_p(f'Assessed by: {assessed_by or "—"}', body))
     story.append(_pdf_p(f'Assessment last updated: {assessed_at}', body))
     story.append(Spacer(1, 0.06 * inch))
 
     story.append(Paragraph('3. Control measures', h2))
-    story.append(_pdf_p(f'Engineering: {ra.engineering_controls or "—"}', body))
-    story.append(_pdf_p(f'Administrative: {ra.administrative_controls or "—"}', body))
-    story.append(_pdf_p(f'PPE: {ra.ppe_controls or "—"}', body))
+    ctrl_rows = [
+        [Paragraph('Category', hdr_tbl), Paragraph('Control measure', hdr_tbl)],
+        [_pdf_p('Engineering', tbl_cell), _pdf_p(ra.engineering_controls or '—', tbl_cell)],
+        [_pdf_p('Administrative', tbl_cell), _pdf_p(ra.administrative_controls or '—', tbl_cell)],
+        [_pdf_p('PPE', tbl_cell), _pdf_p(ra.ppe_controls or '—', tbl_cell)],
+    ]
+    t_ctrl = Table(ctrl_rows, colWidths=[1.35 * inch, 5.0 * inch])
+    t_ctrl.setStyle(
+        TableStyle(
+            [
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e40af')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 9),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e1')),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8fafc')]),
+                ('LEFTPADDING', (0, 0), (-1, -1), 5),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+                ('TOPPADDING', (0, 0), (-1, -1), 5),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+            ]
+        )
+    )
+    story.append(t_ctrl)
     story.append(Spacer(1, 0.08 * inch))
 
     story.append(Paragraph('4. Mitigation actions', h2))
@@ -1390,11 +1532,33 @@ def _build_assessment_pdf_report(report: IncidentReport, ra: RiskAssessment) -> 
     if irs:
         story.append(Spacer(1, 0.1 * inch))
         story.append(Paragraph('5. Information requests (on file)', h2))
+        ir_rows = [[Paragraph('Sent (local)', hdr_tbl), Paragraph('Request detail', hdr_tbl)]]
         for ir in irs:
             created_ir = timezone.localtime(ir.created_at).strftime('%Y-%m-%d %H:%M')
             payload = ir.payload or {}
-            qs = payload.get('specificQuestions') or ''
-            story.append(_pdf_p(f'— {created_ir}: {qs}', body))
+            qs = (payload.get('specificQuestions') or '').strip()
+            other = (payload.get('otherInfo') or '').strip()
+            detail = ' — '.join(x for x in [qs, other] if x) or '—'
+            ir_rows.append([_pdf_p(created_ir, tbl_cell), _pdf_p(detail, tbl_cell)])
+        t_ir = Table(ir_rows, colWidths=[1.25 * inch, 5.1 * inch])
+        t_ir.setStyle(
+            TableStyle(
+                [
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e40af')),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, 0), 9),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e1')),
+                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8fafc')]),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 5),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+                    ('TOPPADDING', (0, 0), (-1, -1), 5),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+                ]
+            )
+        )
+        story.append(t_ir)
 
     doc.build(story)
     data = buf.getvalue()

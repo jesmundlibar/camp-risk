@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { Save, Send, AlertCircle } from 'lucide-react';
-import { xuLogo } from '../constants/xuLogo';
+import { AppShellHeader } from '../components/AppShellHeader';
 import { riskChoicesForHazard } from '../constants/hazardRiskChoices';
 import { MITIGATION_TEAM_OPTIONS } from '../constants/mitigationTeams';
 import {
@@ -457,33 +457,23 @@ export function RiskAssessment() {
   const incidentPhotoSrc = sourceReport ? ensureMediaSrc(sourceReport.photo_url) : null;
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <img src={xuLogo} alt="XU Logo" className="h-12" />
-            <div>
-              <h1 className="text-xl text-[var(--xu-blue)]">CAMP-RISK</h1>
-              <p className="text-sm text-slate-600">Risk Management System</p>
-            </div>
-          </div>
-          <button
-            onClick={() => navigate('/admin/dashboard')}
-            className="px-4 py-2 text-sm border border-slate-300 rounded-md hover:bg-slate-100 transition-colors"
-          >
+    <div className="app-page">
+      <AppShellHeader
+        actions={
+          <button type="button" onClick={() => navigate('/admin/dashboard')} className="app-btn-outline w-full sm:w-auto">
             Dashboard
           </button>
-        </div>
-      </header>
+        }
+      />
 
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-white rounded-lg shadow-lg p-6 sm:p-8 lg:p-10">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl text-slate-800">Risk Assessment - Report #{reportId}</h2>
+      <main className="app-main-wide">
+        <div className="app-form-panel">
+          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <h2 className="app-page-title">Risk assessment — report #{reportId}</h2>
             <button
               onClick={handleSaveDraft}
-              className="flex items-center gap-2 px-4 py-2 text-sm border border-slate-300 rounded-md hover:bg-slate-100 transition-colors"
+              type="button"
+              className="app-btn-outline flex w-full min-h-11 shrink-0 items-center justify-center gap-2 sm:w-auto"
             >
               <Save className="h-4 w-4" />
               Save Draft

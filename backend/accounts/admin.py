@@ -8,6 +8,7 @@ from .models import UserProfile
 class UserProfileInline(admin.StackedInline):
     model = UserProfile
     can_delete = False
+    exclude = ('personnel_plain_password',)
 
 
 class UserAdmin(BaseUserAdmin):

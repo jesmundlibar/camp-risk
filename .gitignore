@@ -5,7 +5,11 @@ node_modules/
 dist/
 .env
 .env.*
+backend/.env
+backend/local.env
 !.env.example
+!backend/.env.example
+!backend/local.env.example
 *.log
 
 # Django user uploads (keep local only)

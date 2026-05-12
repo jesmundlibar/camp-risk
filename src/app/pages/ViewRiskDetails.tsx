@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 import { AlertCircle, ArrowLeft, FileDown } from 'lucide-react';
-import { xuLogo } from '../constants/xuLogo';
+import { AppShellHeader } from '../components/AppShellHeader';
 import {
   downloadAssessmentPdf,
   ensureMediaSrc,
@@ -121,17 +121,10 @@ export function ViewRiskDetails() {
   const assessment = report?.assessment ?? null;
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="bg-white shadow-sm border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <img src={xuLogo} alt="XU Logo" className="h-12" />
-            <div>
-              <h1 className="text-xl text-[var(--xu-blue)]">CAMP-RISK</h1>
-              <p className="text-sm text-slate-600">Risk Management System</p>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+    <div className="app-page">
+      <AppShellHeader
+        actions={
+          <>
             {assessment && riskId ? (
               <button
                 type="button"
@@ -152,9 +145,9 @@ export function ViewRiskDetails() {
                     }
                   })();
                 }}
-                className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-[var(--xu-blue)] text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                className="app-btn-primary w-full min-h-11 sm:w-auto"
               >
-                <FileDown className="h-4 w-4 shrink-0" />
+                <FileDown className="h-4 w-4 shrink-0" aria-hidden />
                 {pdfLoading ? 'Preparing PDF…' : 'Open PDF report'}
               </button>
             ) : null}
@@ -162,37 +155,29 @@ export function ViewRiskDetails() {
               <select
                 value={pdfAction}
                 onChange={(e) => setPdfAction(e.target.value as 'open' | 'download')}
-                className="px-4 py-2 text-sm border border-slate-300 rounded-md bg-white text-slate-800 min-w-[170px]"
+                className="w-full min-h-10 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm sm:w-auto sm:min-w-[170px] touch-manipulation"
               >
                 <option value="open">Open preview</option>
                 <option value="download">Download</option>
               </select>
             ) : null}
-            <button
-              type="button"
-              onClick={() => navigate('/admin/dashboard')}
-              className="px-4 py-2 text-sm border border-slate-300 rounded-md hover:bg-slate-100 transition-colors"
-            >
+            <button type="button" onClick={() => navigate('/admin/dashboard')} className="app-btn-outline w-full sm:w-auto">
               Back to Dashboard
             </button>
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="px-4 py-2 text-sm border border-slate-300 rounded-md hover:bg-slate-100 transition-colors"
-            >
+            <button type="button" onClick={handleLogout} className="app-btn-outline w-full sm:w-auto">
               Logout
             </button>
-          </div>
-        </div>
-      </header>
+          </>
+        }
+      />
 
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="app-main-narrow">
         <button
           type="button"
           onClick={() => navigate('/admin/dashboard')}
-          className="flex items-center gap-2 text-[var(--xu-blue)] mb-6 hover:underline text-sm"
+          className="mb-5 flex items-center gap-2 text-sm font-medium text-[var(--xu-blue)] hover:underline touch-manipulation"
         >
-          <ArrowLeft className="h-4 w-4" />
+          <ArrowLeft className="h-4 w-4 shrink-0" aria-hidden />
           Back to dashboard
         </button>
 

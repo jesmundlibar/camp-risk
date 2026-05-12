@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 import { ArrowLeft, Send } from 'lucide-react';
-import { xuLogo } from '../constants/xuLogo';
+import { AppShellHeader } from '../components/AppShellHeader';
 import { fetchReport, submitInformationRequest, type ApiReport } from '../lib/api';
 
 export function RequestMoreInfo() {
@@ -84,48 +84,33 @@ export function RequestMoreInfo() {
   const report = apiReport;
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="bg-white shadow-sm border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <img src={xuLogo} alt="XU Logo" className="h-12" />
-            <div>
-              <h1 className="text-xl text-[var(--xu-blue)]">CAMP-RISK</h1>
-              <p className="text-sm text-slate-600">Risk Management System</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <button
-              type="button"
-              onClick={() => navigate('/admin/dashboard')}
-              className="px-4 py-2 text-sm border border-slate-300 rounded-md hover:bg-slate-100 transition-colors"
-            >
+    <div className="app-page">
+      <AppShellHeader
+        actions={
+          <>
+            <button type="button" onClick={() => navigate('/admin/dashboard')} className="app-btn-outline">
               Back to Dashboard
             </button>
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="px-4 py-2 text-sm border border-slate-300 rounded-md hover:bg-slate-100 transition-colors"
-            >
+            <button type="button" onClick={handleLogout} className="app-btn-outline">
               Logout
             </button>
-          </div>
-        </div>
-      </header>
+          </>
+        }
+      />
 
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="app-main-md">
         <button
           type="button"
           onClick={() => navigate(-1)}
-          className="flex items-center gap-2 text-[var(--xu-blue)] mb-6 hover:underline"
+          className="mb-5 flex items-center gap-2 text-sm font-medium text-[var(--xu-blue)] hover:underline touch-manipulation"
         >
-          <ArrowLeft className="h-4 w-4" />
+          <ArrowLeft className="h-4 w-4 shrink-0" aria-hidden />
           Back
         </button>
 
         <div className="mb-6">
-          <h2 className="text-2xl sm:text-3xl mb-2">Request More Information</h2>
-          <p className="text-slate-600">
+          <h2 className="app-page-title">Request more information</h2>
+          <p className="app-page-subtitle mt-1.5">
             Report ID: {reportId ?? '—'}
             {report ? ` — ${report.hazard}` : ''}
           </p>
@@ -134,19 +119,19 @@ export function RequestMoreInfo() {
         {loading ? (
           <p className="text-slate-500 text-sm">Loading report…</p>
         ) : !report ? (
-          <div className="bg-white rounded-lg shadow-lg p-8 text-center text-slate-600">
+          <div className="app-card p-8 text-center text-slate-600">
             <p className="mb-4">This report was not found, or the server is unreachable.</p>
             <button
               type="button"
               onClick={() => navigate('/admin/dashboard')}
-              className="px-4 py-2 bg-[var(--xu-blue)] text-white rounded-md hover:bg-blue-700"
+              className="app-btn-primary"
             >
               Back to dashboard
             </button>
           </div>
         ) : (
           <>
-            <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+            <div className="app-card mb-6 p-6">
               <h3 className="text-lg text-slate-800 mb-4">Report Summary</h3>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
@@ -172,7 +157,7 @@ export function RequestMoreInfo() {
               </div>
             </div>
 
-            <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-lg p-6 space-y-6">
+            <form onSubmit={handleSubmit} className="app-card space-y-6 p-6">
               {submitError ? (
                 <div className="p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-800">{submitError}</div>
               ) : null}

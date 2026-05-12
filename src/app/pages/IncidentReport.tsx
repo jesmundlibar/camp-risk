@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { X, Upload } from 'lucide-react';
-import { xuLogo } from '../constants/xuLogo';
+import { AppShellHeader } from '../components/AppShellHeader';
 import { useAuth } from '../context/AuthContext';
 import { ensureMediaSrc, fetchReport, submitIncidentReport, updateGuardIncidentReport } from '../lib/api';
 
@@ -24,6 +24,8 @@ export function IncidentReport() {
   const [initialLoading, setInitialLoading] = useState(isEdit);
   const [existingPhotoUrl, setExistingPhotoUrl] = useState<string | null>(null);
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
+  /** When editing, user asked to drop the saved photo on next submit (multipart flag). */
+  const [pendingRemoveSavedPhoto, setPendingRemoveSavedPhoto] = useState(false);
 
   const hazardOptions = [
     'Earthquake Hazard',
@@ -79,6 +81,7 @@ export function IncidentReport() {
         setDescription(r.description || '');
         setExistingPhotoUrl(r.photo_url ?? null);
         setPhoto(null);
+        setPendingRemoveSavedPhoto(false);
       } catch (e) {
         if (!cancelled) {
           setLoadError(e instanceof Error ? e.message : 'Could not load report');
@@ -111,8 +114,20 @@ export function IncidentReport() {
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setPendingRemoveSavedPhoto(false);
     if (e.target.files && e.target.files[0]) {
       setPhoto(e.target.files[0]);
+    }
+  };
+
+  const clearPhotoChoice = () => {
+    if (photo) {
+      setPhoto(null);
+      setPendingRemoveSavedPhoto(false);
+      return;
+    }
+    if (isEdit && existingPhotoUrl) {
+      setPendingRemoveSavedPhoto(true);
     }
   };
 
@@ -141,6 +156,8 @@ export function IncidentReport() {
       fd.append('description', description);
       if (photo) {
         fd.append('photo', photo);
+      } else if (isEdit && pendingRemoveSavedPhoto) {
+        fd.append('remove_photo', '1');
       }
       if (isEdit && reportId) {
         await updateGuardIncidentReport(reportId, fd);
@@ -156,30 +173,23 @@ export function IncidentReport() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="bg-white shadow-sm border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <img src={xuLogo} alt="XU Logo" className="h-12" />
-            <div>
-              <h1 className="text-xl text-[var(--xu-blue)]">CAMP-RISK</h1>
-              <p className="text-sm text-slate-600">Risk Management System</p>
-            </div>
-          </div>
+    <div className="app-page">
+      <AppShellHeader
+        actions={
           <button
             type="button"
             onClick={() => navigate('/guard/dashboard')}
-            className="px-4 py-2 text-sm border border-slate-300 rounded-md hover:bg-slate-100 transition-colors"
+            className="app-btn-outline w-full sm:w-auto"
           >
             Dashboard
           </button>
-        </div>
-      </header>
+        }
+      />
 
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-white rounded-lg shadow-lg p-6 sm:p-8 lg:p-10">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl text-slate-800">{isEdit ? 'Update Incident Report' : 'New Incident Report'}</h2>
+      <main className="app-main-narrow">
+        <div className="app-form-panel">
+          <div className="flex items-start justify-between gap-3 mb-6">
+            <h2 className="text-xl sm:text-2xl text-slate-800 pr-2">{isEdit ? 'Update Incident Report' : 'New Incident Report'}</h2>
             <button
               type="button"
               onClick={() => navigate('/guard/dashboard')}
@@ -236,7 +246,7 @@ export function IncidentReport() {
 
                 <div>
                   <label className="block text-slate-800 mb-3">Photo Upload</label>
-                  <div className="border-2 border-dashed border-slate-300 rounded-lg p-8 text-center hover:border-[var(--xu-blue)] transition-colors">
+                  <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 sm:p-8 text-center hover:border-[var(--xu-blue)] transition-colors">
                     <input
                       type="file"
                       accept="image/jpeg,image/png"
@@ -251,20 +261,46 @@ export function IncidentReport() {
                       {photo && (
                         <p className="text-sm text-[var(--xu-blue)] mt-2">Selected: {photo.name}</p>
                       )}
-                      {isEdit && !photo && existingPhotoUrl ? (
+                      {isEdit && !photo && existingPhotoUrl && !pendingRemoveSavedPhoto ? (
                         <p className="text-sm text-slate-600 mt-2">
                           Current photo is on file. Choose a new file only if you want to replace it.
                         </p>
                       ) : null}
+                      {isEdit && pendingRemoveSavedPhoto && !photo ? (
+                        <p className="text-sm text-amber-800 mt-2">
+                          The saved photo will be removed when you save this report.
+                        </p>
+                      ) : null}
                     </label>
                   </div>
-                  {(photoPreviewUrl || ensureMediaSrc(existingPhotoUrl)) && (
-                    <div className="mt-4 flex justify-center">
-                      <img
-                        src={photoPreviewUrl || ensureMediaSrc(existingPhotoUrl)!}
-                        alt={photo ? 'New upload preview' : 'Current report photo'}
-                        className="max-h-56 rounded-md border border-slate-200 object-contain"
-                      />
+                  {(photo || existingPhotoUrl || pendingRemoveSavedPhoto) && (
+                    <div className="mt-4 flex flex-col items-center gap-3">
+                      {(photoPreviewUrl || (ensureMediaSrc(existingPhotoUrl) && !pendingRemoveSavedPhoto)) && (
+                        <img
+                          src={(photoPreviewUrl || ensureMediaSrc(existingPhotoUrl))!}
+                          alt={photo ? 'New upload preview' : 'Current report photo'}
+                          className="max-h-56 w-full max-w-md rounded-md border border-slate-200 object-contain"
+                        />
+                      )}
+                      {photo || (isEdit && existingPhotoUrl) ? (
+                        pendingRemoveSavedPhoto ? (
+                          <button
+                            type="button"
+                            onClick={() => setPendingRemoveSavedPhoto(false)}
+                            className="text-sm text-[var(--xu-blue)] hover:text-blue-800 underline underline-offset-2"
+                          >
+                            Undo — keep saved photo
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={clearPhotoChoice}
+                            className="text-sm text-red-700 hover:text-red-900 underline underline-offset-2"
+                          >
+                            Remove photo
+                          </button>
+                        )
+                      ) : null}
                     </div>
                   )}
                 </div>

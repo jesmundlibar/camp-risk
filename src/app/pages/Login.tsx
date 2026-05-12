@@ -34,13 +34,13 @@ export function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-red-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md mx-auto">
-        <div className="bg-white rounded-lg shadow-xl p-8">
-          <div className="text-center mb-8">
-            <img src={xuLogo} alt="Xavier University" className="h-32 mx-auto mb-4" />
-            <h1 className="text-3xl mb-1 text-[var(--xu-blue)]">CAMP-RISK</h1>
-            <p className="text-slate-600">Risk Management System</p>
+    <div className="app-page flex items-center justify-center p-4 sm:p-6">
+      <div className="w-full max-w-md">
+        <div className="app-card p-5 sm:p-8">
+          <div className="text-center mb-6 sm:mb-8">
+            <img src={xuLogo} alt="Xavier University" className="h-24 sm:h-32 mx-auto mb-3 sm:mb-4" />
+            <h1 className="text-2xl sm:text-3xl mb-1 font-semibold tracking-tight text-[var(--xu-blue)]">CAMP-RISK</h1>
+            <p className="text-sm text-slate-500">Risk Management System</p>
           </div>
 
           {/* Security Notice */}
@@ -70,7 +70,7 @@ export function Login() {
                 onChange={(e) => setUsername(e.target.value)}
                 required
                 disabled={isLoading}
-                className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--xu-blue)] bg-white disabled:bg-slate-100"
+                className="w-full min-h-11 px-4 py-2.5 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--xu-blue)] bg-white disabled:bg-slate-100 text-base touch-manipulation"
                 placeholder="Enter your username"
               />
             </div>
@@ -88,7 +88,7 @@ export function Login() {
                   required
                   disabled={isLoading}
                   autoComplete="current-password"
-                  className="w-full px-4 py-2 pr-11 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--xu-blue)] bg-white disabled:bg-slate-100"
+                  className="w-full min-h-11 px-4 py-2.5 pr-11 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--xu-blue)] bg-white disabled:bg-slate-100 text-base touch-manipulation"
                   placeholder="Enter your password"
                 />
                 <button
@@ -97,7 +97,7 @@ export function Login() {
                   disabled={isLoading}
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                   aria-pressed={showPassword}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-slate-500 hover:text-slate-800 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-[var(--xu-blue)] disabled:opacity-50"
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex min-h-10 min-w-10 items-center justify-center rounded-md p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-[var(--xu-blue)] disabled:opacity-50 touch-manipulation"
                 >
                   {showPassword ? <EyeOff className="h-5 w-5" aria-hidden /> : <Eye className="h-5 w-5" aria-hidden />}
                 </button>
@@ -113,7 +113,7 @@ export function Login() {
                 value={role}
                 onChange={(e) => setRole(e.target.value as UserRole)}
                 disabled={isLoading}
-                className="w-full px-4 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--xu-blue)] bg-white disabled:bg-slate-100"
+                className="w-full min-h-11 px-4 py-2.5 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--xu-blue)] bg-white disabled:bg-slate-100 text-base touch-manipulation"
               >
                 <option value="guard">Security Guard</option>
                 <option value="admin">SSIO Officer / Administrator</option>
@@ -123,7 +123,7 @@ export function Login() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full bg-[var(--xu-blue)] text-white py-3 rounded-md hover:bg-blue-700 transition-colors disabled:bg-slate-400 disabled:cursor-not-allowed"
+              className="w-full min-h-12 rounded-lg bg-[var(--xu-blue)] text-white py-3 text-base font-medium shadow-sm transition-colors hover:bg-blue-800 disabled:bg-slate-400 disabled:cursor-not-allowed touch-manipulation"
             >
               {isLoading ? 'Signing In...' : 'Sign In'}
             </button>
