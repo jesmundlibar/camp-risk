@@ -1,86 +1,98 @@
-# CAMP-RISK — Campus Risk Assessment System
+# CAMP-RISK
 
-Django REST API (**`backend/`**) plus Vite/React SPA (repo **`src/`**). Used for SSIO/officer dashboards, guard incident reporting, and risk assessment workflows.
+Campus risk assessment app for Xavier SSIO: guards file incident reports, admins assess risk (HIRAC-style), dashboards and personnel management live in the UI.
 
-## Staging / production (Internet-accessible acceptance testing)
+Stack: Django in `backend/`, React + Vite in `src/`. Old `frontend/` folder is leftover; ignore it for day-to-day work.
 
-Hosting is commonly split on **Render** (or similar):
+---
 
-| Service | Role | You must set |
-|--------|------|----------------|
-| **Web Service** | Django API (Gunicorn) | `SECRET_KEY`, `DATABASE_URL` (if Postgres), `CORS_ALLOWED_ORIGINS`, `CSRF_TRUSTED_ORIGINS`; avoid `DEBUG` in production |
-| **Static Site** | Built SPA (`npm run build:app`, publish **`dist/`**) | **`VITE_API_URL`** = full `https://` URL of the API (**no trailing path**); optional **`VITE_FEEDBACK_URL`** = public Google Form URL (shows “Beta feedback form” on login) |
+## Deploying on Render (what we actually use)
 
-Replace with your deployed URLs:
+Split into two services: a **Web Service** (Docker / Django + Gunicorn) and a **Static Site** (built SPA).
 
-- **Staging / beta site (SPA):** `https://<your-static-site>.onrender.com`
-- **Staging / beta API:** `https://<your-api-service>.onrender.com`
+**Web service (API)** — set at least:
 
-Fixed **SSIO bootstrap account** (code): username `Admin`, password `Admin@123`, sign-in role **SSIO Officer / Administrator**. Guards are created under **Manage Security Personnel**.
+- `SECRET_KEY`
+- `DATABASE_URL` — **must be on this service.** Django reads it here. If it’s missing, the app falls back to SQLite inside the container and data can vanish on restart. Don’t put `DATABASE_URL` on the static site; it doesn’t run Python.
+- `CORS_ALLOWED_ORIGINS` and `CSRF_TRUSTED_ORIGINS` — your static site URL(s), comma-separated if needed
+- Turn off `DEBUG` for anything public
 
-> **Tester access:** Provide the static URL credentials test accounts only; rotate `SECRET_KEY` / DB if you recycle the environment.
+**Static site (SPA)** — after `npm run build:app`, publish `dist/`. Set:
 
-### SPA refresh shows “Not Found” (Render static site)
+- `VITE_API_URL` — full API base, e.g. `https://your-api.onrender.com` (no `/api` on the end unless you really meant to)
+- Optional: `VITE_FEEDBACK_URL` — Google Form link; login page shows a beta feedback link when set
 
-CAMP-RISK is a **Vite + React** app: routes such as `/admin/dashboard` exist only **in the browser**. Visiting them works after you open `/` and click around, but a **refresh** asks the CDN for a real file at that path—and there isn’t one, so you see **Not Found**.
+Swap in your real URLs instead of placeholders.
 
-**Fix:** In the Render [Dashboard](https://dashboard.render.com) → **your Static Site** → **Redirects / Rewrites** → add:
+**Default admin login (dev / seeded):** user `Admin`, password `Admin@123`, role SSIO. Guards are added in **Manage Security Personnel**. Don’t ship those creds to a real class demo without changing them; rotate `SECRET_KEY` and the DB if you reuse an environment.
 
-| Field | Value |
-|--------|--------|
-| Source | `/*` |
-| Destination | `/index.html` |
-| Action | **Rewrite** |
+---
 
-Details: [Render — Static site redirects and rewrites](https://render.com/docs/redirects-rewrites).
+## “Not Found” when you refresh the SPA on Render
 
-In a **Blueprint** (`render.yaml`), the same behavior is `routes:` with `type: rewrite`, `source: /*`, `destination: /index.html` on the static-site service definition.
+React routes (`/admin/dashboard`, etc.) aren’t real files on the CDN. Refreshing asks for a path that doesn’t exist.
 
-## Infrastructure
+Fix: Render dashboard → your **Static Site** → **Redirects / Rewrites** → add a **rewrite** (not redirect): source `/*`, destination `/index.html`. [Render docs on rewrites](https://render.com/docs/redirects-rewrites).
 
-| File | Purpose |
-|------|---------|
-| [render.yaml](render.yaml) | Blueprint sketch for API + Postgres (adjust names/regions) |
+If you use a Blueprint, put the same idea under the static service in `render.yaml` (`routes` with rewrite to `/index.html`).
 
-## Git releases (course / acceptance)
+---
 
-Prereleases follow **semver** (`vX.Y.Z-alpha.N`, `vX.Y.Z-beta.N`); see [VERSIONING.md](VERSIONING.md). Legacy plain names **`alpha`** / **`beta`** still exist for older milestones—prefer **`v…`** tags for new work.
+## `render.yaml`
+
+There’s a sample [render.yaml](render.yaml) for API + Postgres; rename regions/services to match your group.
+
+---
+
+## Tags / versions
+
+See [VERSIONING.md](VERSIONING.md). New tags look like `v0.2.0-beta.1`; older tags might still say `alpha` / `beta`.
 
 ```bash
 git tag -l "v0.*"
 git tag -n9 v0.1.0-beta.2
 ```
 
-## Local development
+---
 
-**Backend**
+## Running it locally
+
+Backend (from repo root):
 
 ```bash
 cd backend
-python -m venv .venv && .venv\Scripts\activate   # Windows
+python -m venv .venv
+.venv\Scripts\activate
 pip install -r requirements.txt
 python manage.py migrate
 python manage.py runserver
 ```
 
-**Frontend** (expects API at `http://127.0.0.1:8000` via Vite proxy)
+Frontend — Vite proxies `/api` and `/media` to `http://127.0.0.1:8000`:
 
 ```bash
 npm install
-npm run dev        # SPA: http://localhost:5173
+npm run dev
 ```
 
-Production-style SPA build:
+Open http://localhost:5173
+
+Production-ish front build:
 
 ```bash
 npm run build:app
 ```
 
-## Known limitations (staging)
+---
 
-- Report **photos** use `/media/` URLs; on split origins, images rely on cookie/session/browser behavior unless media is absolute or proxied (the app uses absolute media URLs when configured).
-- **Bearer tokens** improve API auth when cookies are flaky across origins. Tokens are stored in **`localStorage`** so all tabs share them (older builds used **per-tab `sessionStorage`**, which could cause **“Authentication required”** in one tab). **Avoid regenerating Render `SECRET_KEY`** without expecting everyone to **sign out and sign in again** (old tokens stop working).
+## Quirks worth knowing
 
-## Repo / ownership
+- Incident photos are served under `/media/`. If the SPA and API are on different origins, make sure media URLs resolve (the app tries to use absolute URLs when configured).
+- Auth uses cookies plus a bearer token in **localStorage** so tabs behave consistently. If you rotate `SECRET_KEY` on Render, people need to sign in again.
+- Google Sheets backup is optional; needs service account env vars on the API if you turn it on.
 
-Upstream course org: **`2502-XU-ITCC15-1B`**. Maintain release notes when tagging so acceptance evidence stays traceable.
+---
+
+## Repo
+
+Course org: [2502-XU-ITCC15-1B](https://github.com/2502-XU-ITCC15-1B). This repo tracks ITCC work; tag releases when your instructor wants proof of milestones.
