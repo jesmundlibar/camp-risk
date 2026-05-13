@@ -12,12 +12,16 @@ import { RequestMoreInfo } from './pages/RequestMoreInfo';
 import { ExtendDeadline } from './pages/ExtendDeadline';
 import { Unauthorized } from './pages/Unauthorized';
 import { ProtectedRoute } from './components/routing/ProtectedRoute';
+import { DirectorDashboard } from './pages/DirectorDashboard';
+import { DirectorViewRiskPage } from './pages/DirectorViewRiskPage';
 
 function RootRedirect() {
   const { user, authReady } = useAuth();
   if (!authReady) return null;
   if (!user) return <Navigate to="/login" replace />;
-  return user.role === 'admin' ? <Navigate to="/admin/dashboard" replace /> : <Navigate to="/guard/dashboard" replace />;
+  if (user.role === 'admin') return <Navigate to="/admin/dashboard" replace />;
+  if (user.role === 'director') return <Navigate to="/director/dashboard" replace />;
+  return <Navigate to="/guard/dashboard" replace />;
 }
 
 function AdminLayout() {
@@ -25,6 +29,10 @@ function AdminLayout() {
 }
 
 function GuardLayout() {
+  return <Outlet />;
+}
+
+function DirectorLayout() {
   return <Outlet />;
 }
 
@@ -69,6 +77,19 @@ export const router = createBrowserRouter([
           { path: 'update-mitigation/:riskId', Component: UpdateMitigation },
           { path: 'request-info/:reportId', Component: RequestMoreInfo },
           { path: 'extend-deadline/:actionId', Component: ExtendDeadline },
+        ],
+      },
+    ],
+  },
+  {
+    path: '/director',
+    element: <ProtectedRoute role="director" />,
+    children: [
+      {
+        element: <DirectorLayout />,
+        children: [
+          { path: 'dashboard', Component: DirectorDashboard },
+          { path: 'view-risk/:riskId', Component: DirectorViewRiskPage },
         ],
       },
     ],

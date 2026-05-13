@@ -6,6 +6,7 @@ class UserProfile(models.Model):
     class Role(models.TextChoices):
         GUARD = 'guard', 'Guard'
         ADMIN = 'admin', 'Admin'
+        DIRECTOR = 'director', 'Director'
 
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
     role = models.CharField(max_length=16, choices=Role.choices, default=Role.GUARD)

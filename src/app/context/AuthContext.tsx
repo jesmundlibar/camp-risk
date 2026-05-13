@@ -2,7 +2,7 @@ import { createContext, useContext, useState, ReactNode, useEffect, useCallback 
 
 import { apiLogin, apiLogout, apiMe, type ApiUser } from '../lib/api';
 
-export type UserRole = 'guard' | 'admin';
+export type UserRole = 'guard' | 'admin' | 'director';
 
 export interface User {
   id: string;
@@ -24,6 +24,12 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const PERMISSIONS: Record<UserRole, string[]> = {
   guard: ['submit_report', 'view_own_reports'],
+  director: [
+    'view_all_reports',
+    'view_analytics',
+    'view_activity_log',
+    'view_oversight_dashboard',
+  ],
   admin: [
     'submit_report',
     'view_own_reports',

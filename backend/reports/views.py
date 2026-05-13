@@ -37,6 +37,15 @@ def _is_admin(user) -> bool:
     return _user_role(user) == UserProfile.Role.ADMIN
 
 
+def _is_director(user) -> bool:
+    return _user_role(user) == UserProfile.Role.DIRECTOR
+
+
+def _oversight_read_access(user) -> bool:
+    """SSIO admin or Director (read-only oversight) may load org-wide report reads."""
+    return _is_admin(user) or _is_director(user)
+
+
 def _priority_from_hazards(hazard_types: list) -> str:
     high = {
         'Earthquake Hazard',
@@ -186,7 +195,7 @@ def report_list_create(request):
 
     if request.method in ('GET', 'HEAD'):
         qs = IncidentReport.objects.all()
-        if not _is_admin(request.user):
+        if not _oversight_read_access(request.user):
             qs = qs.filter(submitted_by_user_id=str(request.user.id))
         else:
             user_id = request.GET.get('submitted_by_user_id')
@@ -200,6 +209,9 @@ def report_list_create(request):
         return JsonResponse({'reports': data})
 
     # POST — multipart (browser) or JSON
+    if _is_director(request.user):
+        return JsonResponse({'error': 'Director accounts are read-only'}, status=403)
+
     submitted_by_user_id = str(request.user.id)
     submitted_by_name = ''
     hazard_types: list = []
@@ -283,6 +295,8 @@ def report_guard_update(request, report_id: str):
     """
     if not request.user.is_authenticated:
         return JsonResponse({'error': 'Authentication required'}, status=401)
+    if _is_director(request.user):
+        return JsonResponse({'error': 'Director accounts are read-only'}, status=403)
     if _is_admin(request.user):
         return JsonResponse({'error': 'Admins cannot use this endpoint'}, status=403)
     try:
@@ -383,7 +397,7 @@ def report_detail(request, report_id: str):
         )
     except IncidentReport.DoesNotExist:
         return JsonResponse({'error': 'Not found'}, status=404)
-    if not _is_admin(request.user):
+    if not _oversight_read_access(request.user):
         if r.submitted_by_user_id != str(request.user.id):
             return JsonResponse({'error': 'Forbidden'}, status=403)
     data = _serialize(r, request)
@@ -1093,8 +1107,8 @@ def _severity_label(risk_level: str) -> str:
 def dashboard_summary(request):
     if not request.user.is_authenticated:
         return JsonResponse({'error': 'Authentication required'}, status=401)
-    if not _is_admin(request.user):
-        return JsonResponse({'error': 'Admin role required'}, status=403)
+    if not _oversight_read_access(request.user):
+        return JsonResponse({'error': 'Forbidden'}, status=403)
 
     start_raw = (request.GET.get('start_date') or '').strip()
     end_raw = (request.GET.get('end_date') or '').strip()
@@ -1241,6 +1255,45 @@ def dashboard_summary(request):
             'guard_report_tally': guard_report_tally,
         }
     )
+
+
+@require_http_methods(['GET', 'HEAD'])
+def report_activity_log(request):
+    """Recent report status transitions for SSIO dashboard and Director oversight (read-only)."""
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Authentication required'}, status=401)
+    if not _oversight_read_access(request.user):
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+    limit = 80
+    try:
+        limit = min(max(int(request.GET.get('limit', '80')), 1), 200)
+    except (TypeError, ValueError):
+        limit = 80
+    rows = []
+    qs = ReportStatusHistory.objects.select_related('report', 'changed_by').order_by('-created_at')[:limit]
+    status_labels = dict(IncidentReport.Status.choices)
+    for h in qs:
+        changed = ''
+        if h.changed_by_id:
+            u = h.changed_by
+            changed = u.get_full_name().strip() or u.username
+        ca = h.created_at
+        if timezone.is_naive(ca):
+            ca = timezone.make_aware(ca, timezone.get_current_timezone())
+        rows.append(
+            {
+                'id': h.pk,
+                'report_id': h.report.public_id(),
+                'created_at': timezone.localtime(ca).isoformat(),
+                'from_status': h.from_status,
+                'to_status': h.to_status,
+                'from_status_display': status_labels.get(h.from_status, h.from_status or ''),
+                'to_status_display': status_labels.get(h.to_status, h.to_status),
+                'changed_by': changed,
+                'note': h.note or '',
+            }
+        )
+    return JsonResponse({'entries': rows})
 
 
 _PDF_CLASS_LABELS = {
@@ -1568,11 +1621,11 @@ def _build_assessment_pdf_report(report: IncidentReport, ra: RiskAssessment) -> 
 
 @require_http_methods(['GET'])
 def report_assessment_pdf(request, report_id: str):
-    """Printable PDF after risk assessment (admin only)."""
+    """Printable PDF after risk assessment (SSIO or Director read-only)."""
     if not request.user.is_authenticated:
         return JsonResponse({'error': 'Authentication required'}, status=401)
-    if not _is_admin(request.user):
-        return JsonResponse({'error': 'Admin role required'}, status=403)
+    if not _oversight_read_access(request.user):
+        return JsonResponse({'error': 'Forbidden'}, status=403)
     try:
         pk = _parse_report_pk(report_id)
     except ValueError:

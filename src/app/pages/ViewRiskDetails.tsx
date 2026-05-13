@@ -74,7 +74,17 @@ function MitigationList({ assessment }: { assessment: ApiRiskAssessmentDetail })
   );
 }
 
-export function ViewRiskDetails() {
+export type ViewRiskDetailsProps = {
+  /** Dashboard to return to (SSIO vs Director oversight). */
+  homePath?: string;
+  /** When false, hide assess / request-info and other mutation entry points. */
+  allowProgressActions?: boolean;
+};
+
+export function ViewRiskDetails({
+  homePath = '/admin/dashboard',
+  allowProgressActions = true,
+}: ViewRiskDetailsProps) {
   const navigate = useNavigate();
   const { logout } = useAuth();
   const { riskId } = useParams<{ riskId: string }>();
@@ -161,7 +171,7 @@ export function ViewRiskDetails() {
                 <option value="download">Download</option>
               </select>
             ) : null}
-            <button type="button" onClick={() => navigate('/admin/dashboard')} className="app-btn-outline w-full sm:w-auto">
+            <button type="button" onClick={() => navigate(homePath)} className="app-btn-outline w-full sm:w-auto">
               Back to Dashboard
             </button>
             <button type="button" onClick={handleLogout} className="app-btn-outline w-full sm:w-auto">
@@ -172,9 +182,15 @@ export function ViewRiskDetails() {
       />
 
       <main className="app-main-narrow">
+        {!allowProgressActions ? (
+          <div className="mb-5 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+            <strong className="font-semibold text-slate-900">View only</strong> — This account cannot edit incidents,
+            assessments, or mitigation. Use PDF tools below for printable copies when available.
+          </div>
+        ) : null}
         <button
           type="button"
-          onClick={() => navigate('/admin/dashboard')}
+          onClick={() => navigate(homePath)}
           className="mb-5 flex items-center gap-2 text-sm font-medium text-[var(--xu-blue)] hover:underline touch-manipulation"
         >
           <ArrowLeft className="h-4 w-4 shrink-0" aria-hidden />
@@ -200,7 +216,7 @@ export function ViewRiskDetails() {
             </p>
             <button
               type="button"
-              onClick={() => navigate('/admin/dashboard')}
+              onClick={() => navigate(homePath)}
               className="px-6 py-2 bg-[var(--xu-blue)] text-white rounded-md hover:bg-blue-700"
             >
               Return to dashboard
@@ -273,28 +289,30 @@ export function ViewRiskDetails() {
             <div className="flex flex-wrap gap-3">
               <button
                 type="button"
-                onClick={() => navigate('/admin/dashboard')}
+                onClick={() => navigate(homePath)}
                 className="px-6 py-2 border border-slate-300 rounded-md hover:bg-slate-50"
               >
                 Dashboard
               </button>
-              {report.status_code === 'pending' ? (
-                <button
-                  type="button"
-                  onClick={() => navigate(`/admin/assess/${report.id}`)}
-                  className="px-6 py-2 bg-[var(--xu-blue)] text-white rounded-md hover:bg-blue-700"
-                >
-                  Open assessment form
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => navigate(`/admin/request-info/${encodeURIComponent(report.id)}`)}
-                  className="px-6 py-2 border border-slate-300 rounded-md hover:bg-slate-50"
-                >
-                  Request more info
-                </button>
-              )}
+              {allowProgressActions ? (
+                report.status_code === 'pending' ? (
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/admin/assess/${report.id}`)}
+                    className="px-6 py-2 bg-[var(--xu-blue)] text-white rounded-md hover:bg-blue-700"
+                  >
+                    Open assessment form
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/admin/request-info/${encodeURIComponent(report.id)}`)}
+                    className="px-6 py-2 border border-slate-300 rounded-md hover:bg-slate-50"
+                  >
+                    Request more info
+                  </button>
+                )
+              ) : null}
             </div>
           </div>
         ) : (

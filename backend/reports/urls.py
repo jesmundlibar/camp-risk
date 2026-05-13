@@ -15,6 +15,7 @@ urlpatterns = [
         name='notifications-read-one',
     ),
     path('dashboard/summary/', views.dashboard_summary, name='dashboard-summary'),
+    path('reports/activity-log/', views.report_activity_log, name='report-activity-log'),
     path('reports/', views.report_list_create, name='report-list-create'),
     path('reports/<str:report_id>/update/', views.report_guard_update, name='report-guard-update'),
     path('reports/<str:report_id>/', views.report_detail, name='report-detail'),

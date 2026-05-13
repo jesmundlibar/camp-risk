@@ -23,6 +23,8 @@ export function Login() {
       const u = await login(username, password, role);
       if (u.role === 'guard') {
         navigate('/guard/dashboard');
+      } else if (u.role === 'director') {
+        navigate('/director/dashboard');
       } else {
         navigate('/admin/dashboard');
       }
@@ -47,7 +49,7 @@ export function Login() {
           <div className="mb-6 p-3 bg-blue-50 border border-blue-200 rounded-md flex items-start gap-2">
             <Shield className="h-5 w-5 text-[var(--xu-blue)] flex-shrink-0 mt-0.5" />
             <p className="text-sm text-slate-700">
-              Choose Security or SSIO below so we open the correct portal for your account.
+              Choose Security, SSIO, or Director below so we open the correct portal for your account.
             </p>
           </div>
 
@@ -117,6 +119,7 @@ export function Login() {
               >
                 <option value="guard">Security Guard</option>
                 <option value="admin">SSIO Officer / Administrator</option>
+                <option value="director">Director / Oversight (view only)</option>
               </select>
             </div>
 

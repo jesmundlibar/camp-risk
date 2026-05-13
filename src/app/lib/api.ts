@@ -95,7 +95,7 @@ export function assessmentPdfUrl(reportId: string): string {
 export interface ApiUser {
   id: string;
   username: string;
-  role: 'guard' | 'admin';
+  role: 'guard' | 'admin' | 'director';
   fullName: string;
 }
 
@@ -105,7 +105,7 @@ function isValidApiUser(x: unknown): x is ApiUser {
   return (
     typeof o.id === 'string' &&
     typeof o.username === 'string' &&
-    (o.role === 'admin' || o.role === 'guard') &&
+    (o.role === 'admin' || o.role === 'guard' || o.role === 'director') &&
     typeof o.fullName === 'string'
   );
 }
@@ -113,7 +113,7 @@ function isValidApiUser(x: unknown): x is ApiUser {
 export async function apiLogin(
   username: string,
   password: string,
-  role: 'guard' | 'admin',
+  role: 'guard' | 'admin' | 'director',
 ): Promise<ApiUser> {
   const res = await fetch(apiUrl('/api/auth/login/'), {
     ...fetchDefaults,
@@ -136,7 +136,7 @@ export async function apiLogin(
     throw new Error('Login succeeded but API did not return authToken — redeploy the backend.');
   }
   setApiToken(token);
-  return { id: raw.id as string, username: raw.username as string, role: raw.role as 'guard' | 'admin', fullName: raw.fullName as string };
+  return { id: raw.id as string, username: raw.username as string, role: raw.role as ApiUser['role'], fullName: raw.fullName as string };
 }
 
 export async function apiLogout(): Promise<void> {
@@ -455,7 +455,7 @@ export async function fetchGoogleSheetsBackupInfo(): Promise<GoogleSheetsBackupI
 
   const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (res.status === 401 || res.status === 403) {
-    throw new Error('Administrator session required to load backup spreadsheet settings.');
+    throw new Error('SSIO or Director session required to load backup spreadsheet settings.');
   }
   if (!res.ok) {
     const fb = clientFallback();
@@ -492,12 +492,39 @@ export async function fetchDashboardSummary(params?: {
   }
   const res = await authFetch(url.toString(), {});
   if (res.status === 401 || res.status === 403) {
-    throw new Error('You need an administrator session to load the dashboard summary.');
+    throw new Error('You need an SSIO or Director session to load the dashboard summary.');
   }
   if (!res.ok) {
     throw new Error(`Failed to load dashboard (${res.status})`);
   }
   return (await res.json()) as DashboardSummary;
+}
+
+export interface ApiActivityLogEntry {
+  id: number;
+  report_id: string;
+  created_at: string;
+  from_status: string;
+  to_status: string;
+  from_status_display: string;
+  to_status_display: string;
+  changed_by: string;
+  note: string;
+}
+
+/** Recent report status transitions (SSIO and Director read-only). */
+export async function fetchReportActivityLog(limit = 80): Promise<ApiActivityLogEntry[]> {
+  const url = new URL(apiUrl('/api/reports/activity-log/'), window.location.origin);
+  url.searchParams.set('limit', String(limit));
+  const res = await authFetch(url.toString(), {});
+  if (res.status === 401 || res.status === 403) {
+    throw new Error('You need an SSIO or Director session to load the activity log.');
+  }
+  if (!res.ok) {
+    throw new Error(`Failed to load activity log (${res.status})`);
+  }
+  const data = (await res.json()) as { entries?: ApiActivityLogEntry[] };
+  return data.entries ?? [];
 }
 
 export async function submitInformationRequest(

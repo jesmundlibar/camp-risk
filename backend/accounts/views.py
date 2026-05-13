@@ -17,6 +17,12 @@ ADMIN_PASSWORD = 'Admin@123'
 ADMIN_FIRST_NAME = 'Sir'
 ADMIN_LAST_NAME = 'Apollo'
 ADMIN_EMAIL = 'admin@xu.edu.ph'
+
+DIRECTOR_USERNAME = 'Director'
+DIRECTOR_PASSWORD = 'Director@123'
+DIRECTOR_FIRST_NAME = 'Campus'
+DIRECTOR_LAST_NAME = 'Director'
+DIRECTOR_EMAIL = 'director@xu.edu.ph'
 EMPLOYEE_EMAIL_SUFFIX = '@xu.edu.ph'
 STUDENT_EMAIL_SUFFIX = '@my.xu.edu.ph'
 
@@ -78,6 +84,35 @@ def _ensure_fixed_admin_account() -> User:
     return admin_user
 
 
+def _ensure_fixed_director_account() -> User:
+    """Upper-management read-only oversight account (separate from SSIO admin)."""
+    director_user, _ = User.objects.get_or_create(
+        username=DIRECTOR_USERNAME,
+        defaults={
+            'first_name': DIRECTOR_FIRST_NAME,
+            'last_name': DIRECTOR_LAST_NAME,
+            'email': DIRECTOR_EMAIL,
+            'is_staff': False,
+        },
+    )
+    director_user.first_name = DIRECTOR_FIRST_NAME
+    director_user.last_name = DIRECTOR_LAST_NAME
+    director_user.email = DIRECTOR_EMAIL
+    director_user.is_staff = False
+    director_user.set_password(DIRECTOR_PASSWORD)
+    director_user.save(
+        update_fields=['first_name', 'last_name', 'email', 'is_staff', 'password'],
+    )
+    profile, _ = UserProfile.objects.get_or_create(
+        user=director_user,
+        defaults={'role': UserProfile.Role.DIRECTOR, 'created_by_admin': True},
+    )
+    profile.role = UserProfile.Role.DIRECTOR
+    profile.created_by_admin = True
+    profile.save(update_fields=['role', 'created_by_admin'])
+    return director_user
+
+
 def _user_payload(user: User, *, include_token: bool = False) -> dict:
     profile = getattr(user, 'profile', None)
     role = profile.role if profile else UserProfile.Role.GUARD
@@ -97,6 +132,7 @@ def _user_payload(user: User, *, include_token: bool = False) -> dict:
 @require_http_methods(['POST'])
 def api_login(request):
     fixed_admin = _ensure_fixed_admin_account()
+    fixed_director = _ensure_fixed_director_account()
     try:
         body = json.loads(request.body.decode() or '{}')
     except json.JSONDecodeError:
@@ -106,20 +142,32 @@ def api_login(request):
     requested_role = (body.get('role') or '').strip()
     if not username or not password:
         return JsonResponse({'error': 'username and password are required'}, status=400)
-    if requested_role not in (UserProfile.Role.GUARD, UserProfile.Role.ADMIN):
+    if requested_role not in (UserProfile.Role.GUARD, UserProfile.Role.ADMIN, UserProfile.Role.DIRECTOR):
         return JsonResponse(
-            {'error': 'Select whether you are signing in as Security or SSIO before continuing.'},
+            {'error': 'Select your role (Security, SSIO, or Director) before continuing.'},
             status=400,
         )
     if requested_role == UserProfile.Role.ADMIN:
+        if username == DIRECTOR_USERNAME:
+            return JsonResponse({'error': 'Use Director / Oversight sign-in for this account.'}, status=403)
         if username != ADMIN_USERNAME or password != ADMIN_PASSWORD:
             return JsonResponse({'error': 'Invalid credentials'}, status=401)
         user = authenticate(request, username=ADMIN_USERNAME, password=ADMIN_PASSWORD)
         if user is None or user.pk != fixed_admin.pk:
             return JsonResponse({'error': 'Admin account is not available. Please contact support.'}, status=500)
+    elif requested_role == UserProfile.Role.DIRECTOR:
+        if username == ADMIN_USERNAME:
+            return JsonResponse({'error': 'Use SSIO Officer / Administrator sign-in for this account.'}, status=403)
+        if username != DIRECTOR_USERNAME or password != DIRECTOR_PASSWORD:
+            return JsonResponse({'error': 'Invalid credentials'}, status=401)
+        user = authenticate(request, username=DIRECTOR_USERNAME, password=DIRECTOR_PASSWORD)
+        if user is None or user.pk != fixed_director.pk:
+            return JsonResponse({'error': 'Director account is not available. Please contact support.'}, status=500)
     else:
         if username == ADMIN_USERNAME:
             return JsonResponse({'error': 'Use SSIO Officer / Administrator sign-in for this account.'}, status=403)
+        if username == DIRECTOR_USERNAME:
+            return JsonResponse({'error': 'Use Director / Oversight sign-in for this account.'}, status=403)
         user = authenticate(request, username=username, password=password)
         if user is None:
             try:
@@ -178,6 +226,24 @@ def _require_admin_json(request):
     ):
         return JsonResponse({'error': 'Admin role required'}, status=403)
     return None
+
+
+def _require_admin_or_director_read_dashboard(request):
+    """Read-only dashboard metadata (e.g. spreadsheet link) for SSIO or Director oversight."""
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Authentication required'}, status=401)
+    profile = getattr(request.user, 'profile', None)
+    if not profile:
+        return JsonResponse({'error': 'Forbidden'}, status=403)
+    if profile.role == UserProfile.Role.DIRECTOR:
+        return None
+    if (
+        profile.role == UserProfile.Role.ADMIN
+        and request.user.username == ADMIN_USERNAME
+        and profile.created_by_admin
+    ):
+        return None
+    return JsonResponse({'error': 'Forbidden'}, status=403)
 
 
 def _serialize_guard_user(u: User) -> dict:
@@ -364,7 +430,7 @@ def personnel_detail(request, user_id: int):
 @require_http_methods(['GET', 'HEAD'])
 def api_google_sheets_backup_info(request):
     """Return whether automated backup is on and a browser URL for admins to open the spreadsheet."""
-    err = _require_admin_json(request)
+    err = _require_admin_or_director_read_dashboard(request)
     if err is not None:
         return err
     sid = (os.environ.get('GOOGLE_SHEETS_SPREADSHEET_ID') or '').strip()
