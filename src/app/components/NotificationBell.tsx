@@ -25,6 +25,14 @@ function guardDestination(reportId: string): string {
   return id ? `/guard/dashboard?report=${encodeURIComponent(id)}` : '/guard/dashboard';
 }
 
+/** While the tab is active, poll often enough to feel live on desktop; hidden tabs poll rarely for battery. */
+const POLL_MS_VISIBLE = 5_000;
+const POLL_MS_HIDDEN = 45_000;
+
+function formatBellCount(n: number): string {
+  return n > 99 ? '99+' : String(n);
+}
+
 export function NotificationBell({ role }: { role: Role }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -33,9 +41,12 @@ export function NotificationBell({ role }: { role: Role }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const panelRef = useRef<HTMLDivElement>(null);
+  const itemsRef = useRef<ApiNotificationRow[]>([]);
+  itemsRef.current = items;
 
   const load = useCallback(async () => {
-    setLoading(true);
+    const hadRows = itemsRef.current.length > 0;
+    if (!hadRows) setLoading(true);
     setError('');
     try {
       const data = await fetchNotifications();
@@ -50,20 +61,43 @@ export function NotificationBell({ role }: { role: Role }) {
 
   useEffect(() => {
     void load();
-    const pollMs = () => (document.visibilityState === 'visible' ? 12_000 : 90_000);
+
+    const pollMs = () => (document.visibilityState === 'visible' ? POLL_MS_VISIBLE : POLL_MS_HIDDEN);
+
     let id = window.setInterval(() => void load(), pollMs());
-    const onVis = () => {
+
+    const resetInterval = () => {
       window.clearInterval(id);
-      void load();
       id = window.setInterval(() => void load(), pollMs());
     };
+
+    /** iOS / mobile often throttle timers in background; always refetch when the page is shown again. */
+    const onVis = () => {
+      resetInterval();
+      void load();
+      if (document.visibilityState === 'visible') {
+        window.setTimeout(() => void load(), 400);
+      }
+    };
+
     const onFocus = () => void load();
+
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) void load();
+    };
+
+    const onOnline = () => void load();
+
     document.addEventListener('visibilitychange', onVis);
     window.addEventListener('focus', onFocus);
+    window.addEventListener('pageshow', onPageShow);
+    window.addEventListener('online', onOnline);
     return () => {
       window.clearInterval(id);
       document.removeEventListener('visibilitychange', onVis);
       window.removeEventListener('focus', onFocus);
+      window.removeEventListener('pageshow', onPageShow);
+      window.removeEventListener('online', onOnline);
     };
   }, [load]);
 
@@ -76,6 +110,14 @@ export function NotificationBell({ role }: { role: Role }) {
     document.addEventListener('pointerdown', onDoc);
     return () => document.removeEventListener('pointerdown', onDoc);
   }, [open]);
+
+  const total = items.length;
+  const bellTitle =
+    unread > 0
+      ? `${unread} unread notification${unread === 1 ? '' : 's'}${total !== unread ? ` (${total} in inbox)` : ''}`
+      : total > 0
+        ? `${total} notification${total === 1 ? '' : 's'} (all read)`
+        : 'No notifications';
 
   const onItemClick = async (n: ApiNotificationRow) => {
     try {
@@ -98,20 +140,45 @@ export function NotificationBell({ role }: { role: Role }) {
         }}
         className="relative inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border border-slate-300 p-2 text-slate-700 transition-colors hover:bg-slate-100 touch-manipulation"
         aria-expanded={open}
-        aria-label="Notifications"
+        aria-label={`Notifications. ${bellTitle}.`}
+        title={bellTitle}
       >
         <Bell className="h-5 w-5" aria-hidden />
         {unread > 0 ? (
-          <span className="absolute -top-1 -right-1 min-w-[1.125rem] h-[1.125rem] px-1 flex items-center justify-center rounded-full bg-red-600 text-[10px] font-medium text-white">
-            {unread > 99 ? '99+' : unread}
+          <span
+            className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[11px] font-semibold leading-none text-white ring-2 ring-white"
+            aria-hidden
+          >
+            {formatBellCount(unread)}
+          </span>
+        ) : total > 0 ? (
+          <span
+            className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-600 px-1 text-[11px] font-semibold leading-none text-white ring-2 ring-white"
+            aria-hidden
+          >
+            {formatBellCount(total)}
           </span>
         ) : null}
       </button>
 
       {open ? (
         <div className="z-[60] flex max-h-[min(70dvh,24rem)] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg max-sm:fixed max-sm:left-[max(0.75rem,env(safe-area-inset-left))] max-sm:right-[max(0.75rem,env(safe-area-inset-right))] max-sm:top-[max(4.5rem,env(safe-area-inset-top))] max-sm:max-h-[min(calc(100dvh-5.5rem-env(safe-area-inset-top)-env(safe-area-inset-bottom)),24rem)] max-sm:w-auto sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[min(100vw-2rem,22rem)]">
-          <div className="flex items-center justify-between px-3 py-2 border-b border-slate-100 bg-slate-50">
-            <span className="text-sm font-medium text-slate-800">Notifications</span>
+          <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-slate-100 bg-slate-50">
+            <span className="min-w-0 text-sm font-medium text-slate-800">
+              Notifications
+              {total > 0 ? (
+                <span className="mt-0.5 block text-xs font-normal text-slate-500">
+                  {unread > 0 ? (
+                    <>
+                      <span className="font-medium text-red-600">{unread} unread</span>
+                      {total !== unread ? <span> · {total} total</span> : null}
+                    </>
+                  ) : (
+                    <span>{total} total (all read)</span>
+                  )}
+                </span>
+              ) : null}
+            </span>
             <button
               type="button"
               disabled={unread === 0 || loading}
