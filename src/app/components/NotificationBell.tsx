@@ -162,13 +162,11 @@ export function NotificationBell({ role }: { role: Role }) {
     return () => document.removeEventListener('pointerdown', onDoc);
   }, [open]);
 
-  const total = items.length;
+  const unreadItems = items.filter((n) => !n.read);
   const bellTitle =
     unread > 0
-      ? `${unread} unread notification${unread === 1 ? '' : 's'}${total !== unread ? ` (${total} in inbox)` : ''}`
-      : total > 0
-        ? `${total} notification${total === 1 ? '' : 's'} (all read)`
-        : 'No notifications';
+      ? `${unread} unread notification${unread === 1 ? '' : 's'}`
+      : 'No new notifications';
 
   const onItemClick = async (n: ApiNotificationRow) => {
     try {
@@ -186,16 +184,11 @@ export function NotificationBell({ role }: { role: Role }) {
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-100 bg-slate-50 px-3 py-2">
         <span className="min-w-0 text-sm font-medium text-slate-800">
           Notifications
-          {total > 0 ? (
+          {unread > 0 ? (
             <span className="mt-0.5 block text-xs font-normal text-slate-500">
-              {unread > 0 ? (
-                <>
-                  <span className="font-medium text-red-600">{unread} unread</span>
-                  {total !== unread ? <span> · {total} total</span> : null}
-                </>
-              ) : (
-                <span>{total} total (all read)</span>
-              )}
+              <span className="font-medium text-red-600">
+                {unread} unread
+              </span>
             </span>
           ) : null}
         </span>
@@ -223,18 +216,18 @@ export function NotificationBell({ role }: { role: Role }) {
           <p className="p-4 text-sm text-slate-500">Loading…</p>
         ) : items.length === 0 ? (
           <p className="p-4 text-sm text-slate-500">No notifications yet.</p>
+        ) : unreadItems.length === 0 ? (
+          <p className="p-4 text-sm text-slate-500">No new notifications. You are all caught up.</p>
         ) : (
           <ul className="divide-y divide-slate-100">
-            {items.map((n) => (
+            {unreadItems.map((n) => (
               <li key={n.id}>
                 <button
                   type="button"
                   onClick={() => void onItemClick(n)}
-                  className={`w-full touch-manipulation px-3 py-2.5 text-left transition-colors hover:bg-slate-50 ${
-                    n.read ? 'bg-white' : 'bg-blue-50/50'
-                  }`}
+                  className="w-full touch-manipulation bg-blue-50/50 px-3 py-2.5 text-left transition-colors hover:bg-slate-50"
                 >
-                  <p className={`text-sm ${n.read ? 'text-slate-700' : 'font-medium text-slate-900'}`}>{n.title}</p>
+                  <p className="text-sm font-medium text-slate-900">{n.title}</p>
                   {n.body ? <p className="mt-0.5 line-clamp-2 text-xs text-slate-600">{n.body}</p> : null}
                   <p className="mt-1 text-[10px] text-slate-400">
                     {new Date(n.created_at).toLocaleString()}
@@ -296,13 +289,6 @@ export function NotificationBell({ role }: { role: Role }) {
             aria-hidden
           >
             {formatBellCount(unread)}
-          </span>
-        ) : total > 0 ? (
-          <span
-            className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-600 px-1 text-[11px] font-semibold leading-none text-white ring-2 ring-white"
-            aria-hidden
-          >
-            {formatBellCount(total)}
           </span>
         ) : null}
       </button>
